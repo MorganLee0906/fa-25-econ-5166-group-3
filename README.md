@@ -18,9 +18,12 @@ See [ECON5166-期末專案的管理與交付規範](https://docs.google.com/docu
 
 |  Name | Student ID | Github Account| Role |
 | ---| --- | --- | --- |
-| Name 1 | ID 1 | Account 1 | Role 1 |
-| Name 2 | ID 2 | Account 2 | Role 2 |
-
+| 周彥辰 | B12303119 | YCCAlex | PM |
+| 吳東彥 | B11202031 | IanWu0408 | DA |
+| 袁承亨 | B12303054 |  CHYuan |  DA |
+| 李承祐 | B12303039 | MorganLee0906 | DE |
+| 姚如謙 | B12303125 | ChaneyYao | DE |
+| 林英典 | B12303013 | pzds1124 | DE |
 ## Link to Meeting Note 
 [Link](url)
 Please create a Google Doc for meeting notes for your project. Please create a tab (named by date YYYYMMDD) for each meeting. [Meeting note template](https://docs.google.com/document/d/1vp1DItfbCN4shOsO1ZbVJf6z8bKySTxFDYsEbWRH10E/).
