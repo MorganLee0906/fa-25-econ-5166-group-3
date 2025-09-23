@@ -1,0 +1,52 @@
+---
+title: "template-process-data"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+# Global options for knitr go here if needed
+## knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# README
+
+- **Author**: `<AUTHOR NAME>`
+- **Created At**: `<YYYY-MM-DD>`
+- **Last Modified At**: `<YYYY-MM-DD>`
+
+---
+
+## What does this file do?
+
+- `<Describe the first purpose of this file>`
+- `<Describe the second purpose of this file>`
+- `<Add more if needed>`
+
+---
+
+## What does this file take?
+
+- **Source Data Sets**:  
+  1. `/data/raw/<INPUT_FILE_NAME>` 
+    - Description: `<What does this input file contain?>` 
+  2. `<Add more input files if needed>`
+  
+---
+
+## What does this file output?
+
+- `/data/final/<OUTPUT_FILE_NAME>`  
+  - Description: `<What does this output file contain?>`
+- `<Add more input files if needed>`
+
+```{r}
+# Load packages here
+```
+
+```{r}
+# Load input here
+```

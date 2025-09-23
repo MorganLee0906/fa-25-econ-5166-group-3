@@ -1,0 +1,58 @@
+---
+title: "template-doc-and-summary-stats"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Data Description
+- Author: 
+- Date first created: YYYYMMDD
+- Background: 簡述資料內容
+- Unit of observation:
+- Sample period:
+- Known issues:
+- Definition for each variable: 
+    - 
+    - 
+    - 
+
+```{r}
+# ---- Draft R translation (please review) ----
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+```
+
+## Change for Your Own Data
+
+```{r}
+input_data_file = "./iris.csv"
+```
+
+```{r}
+df = readr::read_csv(input_data_file)
+```
+
+### Sample
+
+```{r}
+df.head(10)
+```
+
+### Summary Stats
+
+```{r}
+df |> summary()
+```
+
+### Assertions
+```{r}
+# Write assertions here—conditions that should always hold in the data.
+# Use them to demonstrate that you have carefully checked the data’s correctness.
+```
+

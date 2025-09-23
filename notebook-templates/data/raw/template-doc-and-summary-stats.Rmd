@@ -1,0 +1,54 @@
+---
+title: ""
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Data Description
+- Background: 簡述資料內容。若是新接收到的資料，請說明為何會收到這份資料，要分析什麼。
+- date received: YYYYMMDD
+- Path to data file: 原始資料在資料中心（如行資）之路徑。請填寫原始檔案之路徑。
+- Unit of observation:
+- Sample period:
+- Known issues:
+    - 
+    - 
+- Definition for each variable: 
+    - 
+    - 
+
+
+```{r}
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+```
+
+## Change for Your Own Data
+
+```{r}
+input_data_file <- "./iris.csv"
+```
+
+## Summary
+
+```{r}
+df = readr::read_csv(input_data_file)
+```
+
+### Sample
+
+```{r}
+df.head(10)
+```
+
+### Summary Stats
+
+```{r}
+df |> summary()
+```
