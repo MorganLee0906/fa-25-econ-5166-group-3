@@ -25,7 +25,7 @@ See [ECON5166-期末專案的管理與交付規範](https://docs.google.com/docu
 | 姚如謙 | B12303125 | ChaneyYao | DE |
 | 林英典 | B12303013 | pzds1124 | DE |
 ## Link to Meeting Note 
-[Link](url)
+[Link](https://docs.google.com/document/d/1p2yovsH1ZrDv_SO_luVjWbAkwCpAIdtUIq2Vzr30hZA/edit?tab=t.0)
 Please create a Google Doc for meeting notes for your project. Please create a tab (named by date YYYYMMDD) for each meeting. [Meeting note template](https://docs.google.com/document/d/1vp1DItfbCN4shOsO1ZbVJf6z8bKySTxFDYsEbWRH10E/).
 
 ## Notebook Templates
