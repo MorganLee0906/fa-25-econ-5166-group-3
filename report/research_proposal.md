@@ -1,0 +1,8 @@
+- Author: Yen-Chen Chou
+- Date created: 20250923
+- File Description: Research Proposal
+- [File link](https://docs.google.com/document/d/1Lyu69DWTWaB-Ecs7H4BeL_nqse0g5ZiDqbFJJyj8oDw/edit?tab=t.0)
+- External file update log:
+    - 20250923: file created
+    - 20250927: rough draft 
+    - 20250928: final version
