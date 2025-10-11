@@ -2,7 +2,11 @@
 title: "Data ready for presentation 10/14"
 author: "Group 3"
 date: "`r Sys.Date()`"
-output: 
+output:
+  html_document:
+    toc: true
+    toc_depth: '3'
+    df_print: paged
   html_notebook:
     toc: true
     toc_depth: 3
@@ -15,7 +19,7 @@ output:
 
 In this section we display the climate data we currently have. The CO2 and AQI represents the mean value of the corresponding day, ranging from 2024/01/01 to 2025/3/29. For the data processing part and the specific location of the station, please see the data processing file for climate data.
 
-```{r Importing data, include = FALSE} 
+```{r Importing data, include = FALSE}
 library(sf)
 library(tmap)
 library(dplyr)
@@ -61,16 +65,32 @@ ggplot(climate, aes(x = Date, y = AQI)) +
   theme_minimal(base_size = 14)
 ```
 
----
+------------------------------------------------------------------------
 
 # MTA Subway Data
 
 We've combined MTA ridership data from July 2024 to June 2025 to the file `data.parquet`.
+
+```{r initialize, include= FALSE}
+library(data.table)
+library(dplyr)
+library(arrow)
+library(ggplot2)
+library(lubridate)
+```
+
 ```{r load_MTA_data}
 ds_new <- open_dataset("~/Documents/DataScience/data.parquet", format = "parquet")
 ds_new <- ds_new %>%
     collect()
 head(ds_new)
+
+stationSet <- unique(ds_new[, c("Origin Station Complex Name", "Destination Station Complex Name")])
+
+stationSet <- ds_new %>%
+  group_by(`Origin Station Complex Name`, `Destination Station Complex Name`) %>%
+  summarise(avg_ridership = mean(`Estimated Average Ridership`, na.rm = TRUE), .groups = "drop") %>%
+  arrange(desc(avg_ridership))
 ```
 
 ```{r MTA_overall_trend}
