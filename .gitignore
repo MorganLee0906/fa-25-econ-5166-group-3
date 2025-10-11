@@ -419,3 +419,5 @@ FodyWeavers.xsd
 # My gitignore
 *.sln.iml
 *.DS_Store
+
+data.parquet

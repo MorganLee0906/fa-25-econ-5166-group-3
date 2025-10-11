@@ -53,14 +53,6 @@ overall_trend %>%
     )
 
 # Top 5. Trend
-stationSet <- ds_new %>%
-    group_by(`Origin Station Complex Name`, `Destination Station Complex Name`) %>%
-    summarise(
-        Estimated_Avg_Ridership = mean(`Estimated Average Ridership`, na.rm = TRUE)
-    ) %>%
-    ungroup() %>%
-    arrange(desc(Estimated_Avg_Ridership))
-
 top5_routes <- stationSet %>%
     slice_head(n = 5)
 
