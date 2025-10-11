@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 # === 2. Read the combined daily average file ===
-file = "NYC_daily_avg_by_borough.csv"
+file = "NYC_daytime_avg_by_borough.csv"
 df = pd.read_csv(file, encoding_errors="ignore")
 
 # Convert DATE to datetime for proper time plotting
