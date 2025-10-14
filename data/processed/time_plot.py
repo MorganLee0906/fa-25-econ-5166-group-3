@@ -37,3 +37,6 @@ plt.savefig("NYC_borough_speed_trends.png", dpi=300)
 plt.show()
 
 print("✅ Plot saved as 'NYC_borough_speed_trends.png' and displayed.")
+
+# Showing the first few rows
+print(df.head())
