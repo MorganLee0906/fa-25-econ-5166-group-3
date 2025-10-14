@@ -4,9 +4,9 @@
 
 In our main dataset (High Volume For-Hired Vehicles), in each row we have the type of the car, the travel datetime, travel starting and ending districts, different kinds of fees... etc as shown.
 
-![alt text](image-4.png)
+![alt text](../temp/img/image-4.png)
 (countinued)
-![alt text](image-5.png)
+![alt text](../temp/img/image-5.png)
 
 ## Car Speed in different boroughs
 
@@ -29,13 +29,13 @@ print(df.head())
 
 Plotting the time-series average speed from different boroughs:
 
-![alt text](image.png)
+![alt text](../temp/img/image.png)
 
 ## Pollution data in Downtown Manhattan 
 
 We combined the **shp data** (geometric data) and the data of **pollution monitoring sites**. The red dots indicate the positions of the stations, while the background is the new york city shp, filtered by Manhattan.
 
-![alt text](image-1.png)
+![alt text](../temp/img/image-1.png)
 
 The below rows show the **Date**, **Average AQI**, and **Average PM2.5 concentration** from 2024/01/01 to 2025/03/26:
 
@@ -65,7 +65,7 @@ ds_head
 | 5 | 2024 | 8 | Thursday | 0  | 225 St (2,5) | 40.88802 | -73.86034 | Times Sq-42 St (N,Q,R,W,S,1,2,3,7)/42 St (A,C,E) | 40.75575 | -73.98758 | 3.7166 |
 
 
-![alt text](image-2.png)
+![alt text](../temp/img/image-2.png)
 
 
-![alt text](image-3.png)
+![alt text](../temp/img/image-3.png)
