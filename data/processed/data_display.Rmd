@@ -85,6 +85,11 @@ ds_new <- ds_new %>%
     collect()
 head(ds_new)
 
+# ds_head <- ds_new[1:5, ]
+# write.csv(ds_head, '~/Downloads/head.csv')
+ds_head <- read.csv('~/Documents/DataScience/fa-25-econ-5166-group-3/data/raw/MTA_df_head.csv')
+ds_head
+
 stationSet <- unique(ds_new[, c("Origin Station Complex Name", "Destination Station Complex Name")])
 
 stationSet <- ds_new %>%
