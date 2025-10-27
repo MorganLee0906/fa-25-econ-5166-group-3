@@ -1,0 +1,64 @@
+---
+title: "Process MTA data"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+
+```
+
+# README
+
+- **Author**: `ChengYu, Lee`
+- **Created At**: `2025-09`
+- **Last Modified At**: `2025-10-26`
+
+---
+
+## What does this file do?
+
+- Combine the raw data of MTA Subway Origin-Destination Ridership Estimate from 2024 and 2025 into a single dataset.
+- Filtering 2024 data to only include records from July onwards.
+- Save the combined dataset as a Parquet file for efficient storage and future analysis.
+
+---
+
+## What does this file take?
+
+- **Source Data Sets**:  
+  1. `MTA_Subway_Origin-Destination_Ridership_Estimate__2024_20250928.csv` 
+    - Description: `MTA Subway Origin-Destination Ridership Estimate data for the year 2024.`
+  2. `MTA_Subway_Origin-Destination_Ridership_Estimate__Beginning_2025.csv`
+    - Description: `MTA Subway Origin-Destination Ridership Estimate data for the year 2025.`
+  
+---
+
+## What does this file output?
+
+- `data.parquet`  
+  - Description: `<What does this output file contain?>`
+- `<Add more input files if needed>`
+
+```{r}
+library(data.table)
+library(dplyr)
+library(arrow)
+library(ggplot2)
+library(lubridate)
+```
+
+```{r load_and_bind_data}
+df_24 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__2024_20250928.csv")
+df_24 <- df_24 %>%
+    filter(Month >= 7)
+df_25 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__Beginning_2025.csv")
+# Note: As dataset of 2025 only cover first 6 months, we don't need to filter anymore.
+
+df <- rbindlist(list(df_24, df_25), use.names = TRUE, fill = TRUE)
+
+write_parquet(df, "~/Documents/DataScience/data.parquet", compression = "snappy")
+```
