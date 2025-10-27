@@ -6,6 +6,8 @@ date: "`r format(Sys.time(), '%Y-%m-%d')`"
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(reticulate)
+use_python("/opt/homebrew/bin/python3")
 ```
 
 # (Car Speed) Data Description
@@ -23,7 +25,8 @@ knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ### Sample
 
 ```{python}
-f = "NYC_daytime_avg_by_borough.csv"
+import pandas as pd
+f = "../raw/NYC_daytime_avg_by_borough.csv"
 df = pd.read_csv(f, encoding_errors="ignore")
 print(df.head())
 ```
