@@ -420,4 +420,6 @@ FodyWeavers.xsd
 *.sln.iml
 *.DS_Store
 
-data.parquet
+*.parquet
+*.shp
+*.csv
