@@ -13,35 +13,43 @@ output:
 
 # README
 
-- **Author**: `ChengYu, Lee`
-- **Created At**: `2025-09`
-- **Last Modified At**: `2025-10-26`
+-   **Author**: `ChengYu, Lee`
+-   **Created At**: `2025-09`
+-   **Last Modified At**: `2025-11-03`
 
----
+------------------------------------------------------------------------
 
 ## What does this file do?
 
-- Combine the raw data of MTA Subway Origin-Destination Ridership Estimate from 2024 and 2025 into a single dataset.
-- Filtering 2024 data to only include records from July onwards.
-- Save the combined dataset as a Parquet file for efficient storage and future analysis.
+-   Combine the raw data of MTA Subway Origin-Destination Ridership Estimate from 2024 and 2025 into a single dataset.
+-   Filtering 2024 data to only include records from July onwards.
+-   Save the combined dataset as a Parquet file for efficient storage and future analysis.
+-   Generate hourly and daily total ridership estimates by aggregating the combined data, and save these summaries as CSV files.
 
----
+------------------------------------------------------------------------
 
 ## What does this file take?
 
-- **Source Data Sets**:  
-  1. `MTA_Subway_Origin-Destination_Ridership_Estimate__2024_20250928.csv` 
-    - Description: `MTA Subway Origin-Destination Ridership Estimate data for the year 2024.`
-  2. `MTA_Subway_Origin-Destination_Ridership_Estimate__Beginning_2025.csv`
-    - Description: `MTA Subway Origin-Destination Ridership Estimate data for the year 2025.`
-  
----
+-   **Source Data Sets**:
+
+    1.  `MTA_Subway_Origin-Destination_Ridership_Estimate__2024_20250928.csv`
+
+    -   Description: `MTA Subway Origin-Destination Ridership Estimate data for the year 2024.`
+
+    2.  `MTA_Subway_Origin-Destination_Ridership_Estimate__Beginning_2025.csv`
+
+    -   Description: `MTA Subway Origin-Destination Ridership Estimate data for the year 2025.`
+
+------------------------------------------------------------------------
 
 ## What does this file output?
 
-- `data.parquet`  
-  - Description: `<What does this output file contain?>`
-- `<Add more input files if needed>`
+-   `data.parquet` (intermediate file, not included in the repository)
+    -   Description: `Combined MTA Subway Origin-Destination Ridership Estimate data for 2024 and 2025, filtered for July onwards in 2024.`
+-   `mta_hourly.csv`
+    -   Description: `Hourly total ridership estimates for the MTA Subway, aggregated from origin-destination pairs.`
+-   `mta_daily.csv`
+    -   Description: `Daily total ridership estimates for the MTA Subway, aggregated from hourly data.`
 
 ```{r}
 library(data.table)
@@ -49,6 +57,10 @@ library(dplyr)
 library(arrow)
 library(ggplot2)
 library(lubridate)
+library(here)
+
+
+base_path = "~/Documents/DataScience/fa-25-econ-5166-group-3"
 ```
 
 ```{r load_and_bind_data}
@@ -61,4 +73,27 @@ df_25 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__Be
 df <- rbindlist(list(df_24, df_25), use.names = TRUE, fill = TRUE)
 
 write_parquet(df, "~/Documents/DataScience/data.parquet", compression = "snappy")
+```
+
+```{r get_daily_total}
+pq <- open_dataset("~/Documents/DataScience/data.parquet")
+df <- pq %>%
+  group_by(Year, Month, `Day of Week`, `Hour of Day`) %>%
+  summarize(
+    hour_sum = sum(`Estimated Average Ridership`)
+  ) %>%
+  collect() %>%
+  mutate(`Day of Week` = factor(`Day of Week`, levels = 
+                                  c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
+  arrange(Year, Month, `Day of Week`, `Hour of Day`)
+df
+write.csv(df, paste0(base_path, "/data/processed/mta_hourly.csv"))
+
+df <- df %>%
+  group_by(Year, Month, `Day of Week`) %>%
+  summarize(
+    daily_sum = sum(hour_sum)
+  )
+df
+write.csv(df, file.path(base_path, "/data/processed/mta_daily.csv"))
 ```
