@@ -1,0 +1,76 @@
+---
+title: "MTA Data Statistical Analysis"
+author: "ChengYu, Lee"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+
+- **Author**: ChengYu, Lee
+- **Created At**: 2025-11-03
+- **Research Motivation and Context (why are we interested in the findings?)：** We want to check whether the MTA ridership increase after the policy implemented in early 2025.
+- **Main Findings and Takeaways：** The daily ridership increased significantly in 2025 compared to 2024.
+- **Future Direction：** We may check whether the trip in/out of Manhattan has different patterns. Also, we can analyze more data to check whether the increasing is a seasonal trend or not.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readr)
+library(fixest)
+```
+
+```{r}
+# Load input data here and please finish all the data manipulation here.
+# Finish this block by printing the first ten observations of the data.
+# Note:
+# - You may only read data from /data/processed.
+# - Files in /data/processed should already be cleaned and prepared for analysis.
+# - Beyond simple filtering of observations or generating a small number of variables,
+#   further data manipulation is not allowed. If more extensive changes are needed,
+#   update the source data instead.
+base_path = "~/Documents/DataScience/fa-25-econ-5166-group-3/"
+hourly_df = read_csv(file.path(base_path, "data/processed/mta_hourly.csv"))
+daily_df = read_csv(file.path(base_path, "data/processed/mta_daily.csv"))
+head(hourly_df, 10)
+head(daily_df, 10) 
+```
+
+```{r}
+# Before conducting the analysis, report summary statistics for all variables 
+# that will be used in this notebook:
+#   - For numeric variables: mean, min, 25th percentile, median, 75th percentile, 
+#     max, standard deviation, and number of observations.
+#   - For categorical variables: number of observations and the counts/percentages 
+#     of the ten most frequent categories.
+# Conclude this block with the complete summary statistics.
+summary(hourly_df$hour_sum)
+summary(daily_df$daily_sum)
+```
+
+### The actual analysis starts below
+```{r descriptive_stat}
+daily_df %>%
+  group_by(Year) %>%
+  summarise(
+    mean = mean(daily_sum, na.rm = TRUE),
+    min = min(daily_sum, na.rm = TRUE),
+    q25 = quantile(daily_sum, 0.25, na.rm = TRUE),
+    q50 = quantile(daily_sum, 0.50, na.rm = TRUE), 
+    q75 = quantile(daily_sum, 0.75, na.rm = TRUE),
+    max = max(daily_sum, na.rm = TRUE),
+    sd = sd(daily_sum, na.rm = TRUE),
+    n = n()
+  )
+```
+
+### Regression Analysis
+```{r regression}
+model <- feols(hour_sum ~ i(Year) | `Day of Week` + `Hour of Day`, data = hourly_df)
+summary(model)
+```
+
