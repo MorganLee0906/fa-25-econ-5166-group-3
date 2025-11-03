@@ -1,0 +1,131 @@
+---
+title: "Statistical Analysis Template (Converted from Jupyter)"
+author: "Auto-converted"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+
+- **Author**: `<Ju-Chien, Yao>`
+- **Created At**: `<2025/11/03>`
+- **Research Motivation and Context (why are we interested in the findings?)：** We want to see how the air quality changes in different regions after the implementation of congestion fee.
+- **Main Findings and Takeaways：** The regional effect is not apparent. Maybe some control variable should be added.
+- **Future Direciton：** Add temperature, precipitation and other climate variables; Apply DID or GSC.
+
+```{r}
+# Load packages here
+library(sf)
+library(tmap)
+library(dplyr)
+library(tidyr)
+library(arrow)
+library(ggplot2)
+library(lubridate)
+```
+
+這裡的操作只是為了接下來方便作圖，跟原始資料的操作較無關係。
+
+```{r}
+# Load input data here and please finish all the data manipulation here.
+
+## Reading Data
+climate = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/processed_pm2.5_AQI.csv") %>% 
+  select(c(-X)) %>%
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y"))
+
+## Produce weekly data
+climate_weekly <- climate %>%
+  # Create a "week" variable from the datetime column
+  mutate(week = floor_date(Date, "week")) %>%
+  # Group by week and region (if multiple locations)
+  group_by(region, week) %>%
+  # Compute weekly means
+  summarise(
+    PM2.5_avg = mean(`PM2.5`, na.rm = TRUE),
+    AQI_avg  = mean(AQI, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+## Produce 2-weekly data
+climate_biweekly <- climate %>%
+  mutate(biweek = floor_date(Date - days(7 * (week(Date) %% 2)), "week")) %>%
+  group_by(region, biweek) %>%
+  summarise(
+    PM25_avg = mean(`PM2.5`, na.rm = TRUE),
+    AQI_avg  = mean(AQI, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Finish this block by printing the first ten observations of the data.
+
+## Take the main data (the read-in-to-use one) as example
+head(climate, 10)
+
+# Note:
+# - You may only read data from /data/processed.
+# - Files in /data/processed should already be cleaned and prepared for analysis.
+# - Beyond simple filtering of observations or generating a small number of variables,
+#   further data manipulation is not allowed. If more extensive changes are needed,
+#   update the source data instead.
+```
+
+```{r}
+# Before conducting the analysis, report summary statistics for all variables 
+# that will be used in this notebook:
+#   - For numeric variables: mean, min, 25th percentile, median, 75th percentile, 
+#     max, standard deviation, and number of observations.
+
+# The number of observations
+nrow(climate)
+
+# For PM2.5
+summary(climate$PM2.5)
+sd(climate$PM2.5)
+
+# For AQI
+summary(climate$AQI)
+sd(climate$AQI)
+
+#   - For categorical variables: number of observations and the counts/percentages 
+#     of the ten most frequent categories.
+# Conclude this block with the complete summary statistics.
+```
+
+### The actual analysis starts below
+
+
+```{r}
+ggplot(climate_biweekly, aes(x = biweek, y = PM25_avg, color = region)) +
+  geom_line(linewidth = 0.9) +
+  geom_vline(xintercept = as.POSIXct("2025-01-05"), 
+             linetype = "dashed", 
+             color = "black", 
+             linewidth = 1) +
+  labs(
+    title = "Biweekly Average PM2.5 by Region",
+    x = "Biweek (starting date)",
+    y = "PM2.5 (µg/m³)"
+  )
+```
+
+```{r}
+ggplot(climate_biweekly, aes(x = biweek, y = AQI_avg, color = region)) +
+  geom_line(linewidth = 0.9) +
+  geom_vline(xintercept = as.POSIXct("2025-01-05"), 
+             linetype = "dashed", 
+             color = "black", 
+             linewidth = 1) +
+  labs(
+    title = "Biweekly Average AQI by Region",
+    x = "Biweek (starting date)",
+    y = "AQI"
+  )
+```
+
+The fact that the two plots look similar is intuitive, since AQI should reflect the air quality. The value of East village and the difference between it and other variables are what we should be observing. With a quick rise right after the implementaion of the congestion fee, the value soon fell to the one of the smallest in February and March. More analysis like DID or GSC should be applied to see the effect.
+
