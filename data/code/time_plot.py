@@ -1,42 +1,108 @@
-import os
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# === 1. Setup directory ===
-os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-# === 2. Read the combined daily average file ===
-file = "NYC_daytime_avg_by_borough.csv"
-df = pd.read_csv(file, encoding_errors="ignore")
-
-# Convert DATE to datetime for proper time plotting
-df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-
-# === 3. Define boroughs (ensure columns exist) ===
-boroughs = ["Manhattan", "Staten Island", "Brooklyn", "Bronx", "Queens"]
-
-# Filter only existing boroughs (in case some CSVs missing)
-boroughs = [b for b in boroughs if b in df.columns]
-
-# === 4. Plot ===
-plt.figure(figsize=(12, 6))
-
-for b in boroughs:
-    plt.plot(df['DATE'], df[b], label=b, linewidth=2)
-
-# === 5. Format plot ===
-plt.title("Daily Average Speed by Borough", fontsize=16)
-plt.xlabel("Date", fontsize=12)
-plt.ylabel("Average Speed (mph)", fontsize=12)
-plt.legend(title="Borough", fontsize=10)
-plt.grid(True, linestyle="--", alpha=0.6)
-plt.tight_layout()
-
-# === 6. Save and/or show ===
-plt.savefig("NYC_borough_speed_trends.png", dpi=300)
-plt.show()
-
-print("✅ Plot saved as 'NYC_borough_speed_trends.png' and displayed.")
-
-# Showing the first few rows
-print(df.head())
+{
+ "cells": [
+  {
+   "cell_type": "markdown",
+   "id": "readme",
+   "metadata": {},
+   "source": [
+    "# README\n",
+    "\n",
+    "- **Author**: Ying-Dian Lin\n",
+    "- **Created At**: 2025-10-15\n",
+    "- **Last Modified At**: 2025-11-04\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## What does this file do?\n",
+    "\n",
+    "- This file reads the preprocessed NYC daytime speed averages by borough and visualizes the trends over time.\n",
+    "- It creates a line plot comparing daily average speeds for each borough.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## What does this file take?\n",
+    "\n",
+    "- **Input File**:  \n",
+    "  - `NYC_daytime_avg_by_borough.csv`  \n",
+    "    Contains average speeds per day for each borough.\n",
+    "\n",
+    "---\n",
+    "\n",
+    "## What does this file output?\n",
+    "\n",
+    "- **Output Image**:  \n",
+    "  - `NYC_borough_speed_trends.png` — a line chart of average speed trends.\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "plot_borough_trends",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import os\n",
+    "import pandas as pd\n",
+    "import matplotlib.pyplot as plt\n",
+    "\n",
+    "# === 1. Setup directory ===\n",
+    "os.chdir(os.path.dirname(os.path.abspath(__file__)))\n",
+    "\n",
+    "# === 2. Read the combined daily average file ===\n",
+    "file = \"NYC_daytime_avg_by_borough.csv\"\n",
+    "df = pd.read_csv(file, encoding_errors=\"ignore\")\n",
+    "\n",
+    "# Convert DATE to datetime for proper time plotting\n",
+    "df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')\n",
+    "df = df.dropna(subset=['DATE']).sort_values('DATE')\n",
+    "\n",
+    "# === 3. Define boroughs (ensure columns exist) ===\n",
+    "boroughs = [\"Manhattan\", \"Staten Island\", \"Brooklyn\", \"Bronx\", \"Queens\", \"Manhaton\", \"Staten_Island\"]\n",
+    "boroughs = [b for b in boroughs if b in df.columns]\n",
+    "\n",
+    "# === 4. Plot ===\n",
+    "plt.figure(figsize=(12, 6))\n",
+    "\n",
+    "for b in boroughs:\n",
+    "    if df[b].notna().any():\n",
+    "        plt.plot(df['DATE'], df[b], label=b, linewidth=2)\n",
+    "\n",
+    "# === 5. Format plot ===\n",
+    "plt.title(\"Daily Average Speed by Borough\", fontsize=16)\n",
+    "plt.xlabel(\"Date\", fontsize=12)\n",
+    "plt.ylabel(\"Average Speed (mph)\", fontsize=12)\n",
+    "plt.legend(title=\"Borough\", fontsize=10)\n",
+    "plt.grid(True, linestyle=\"--\", alpha=0.6)\n",
+    "plt.tight_layout()\n",
+    "\n",
+    "# === 6. Save and/or show ===\n",
+    "plt.savefig(\"NYC_borough_speed_trends.png\", dpi=300)\n",
+    "plt.show()\n",
+    "\n",
+    "print(\"✅ Plot saved as 'NYC_borough_speed_trends.png' and displayed.\")\n",
+    "print(df.head())\n"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.6"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
