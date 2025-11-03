@@ -87,7 +87,7 @@ df <- pq %>%
                                   c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
   arrange(Year, Month, `Day of Week`, `Hour of Day`)
 df
-write.csv(df, paste0(base_path, "/data/processed/mta_hourly.csv"))
+write.csv(df, paste0(base_path, "/data/processed/mta_hourly.csv"), row.names = FALSE)
 
 df <- df %>%
   group_by(Year, Month, `Day of Week`) %>%
@@ -95,5 +95,5 @@ df <- df %>%
     daily_sum = sum(hour_sum)
   )
 df
-write.csv(df, file.path(base_path, "/data/processed/mta_daily.csv"))
+write.csv(df, file.path(base_path, "/data/processed/mta_daily.csv"), row.names = FALSE)
 ```

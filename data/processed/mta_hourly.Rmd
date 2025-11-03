@@ -1,0 +1,55 @@
+---
+title: "mta-hourly-dataset-summary-stats"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Data Description
+- Author:  ChengYu, Lee
+- Date first created: 20251103
+- Background: This dataset contains hourly total ridership estimates for the MTA Subway, aggregated from minute-level data.
+- Unit of observation: Hourly ridership estimates
+- Sample period: July 2024 - June 2025
+- Known issues: None reported
+- Definition for each variable: 
+    - Year: The year of the observation
+    - Month: The month of the observation
+    - Day of Week: The day of the week for the observation
+    - Hour: The hour of the observation
+    - Hourly Ridership: The total ridership for the hour
+
+```{r}
+# ---- Draft R translation (please review) ----
+library(dplyr)
+library(ggplot2)
+library(readr)
+```
+
+## MTA Daily Dataset
+
+```{r}
+base_path = "~/Documents/DataScience/fa-25-econ-5166-group-3/data/processed"
+input_data_file = file.path(base_path, "mta_hourly.csv")
+```
+
+```{r}
+df = read_csv(input_data_file)
+```
+
+### Sample
+
+```{r}
+head(df)
+```
+
+### Summary Stats
+
+```{r}
+df$hour_sum %>%
+    summary()
+```
+
