@@ -1,0 +1,64 @@
+---
+title: "hvfhv-dataset-summary-stats"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Data Description
+- Author:  Yen-Chen Chou
+- Date first created: 20251103
+- Background: This dataset contains information of each ride of high-volume for-hire vehicles (HVFHVs) in New York City - Unit of observation: ride
+- Sample period: January 2024 - August 2025
+- Known issues: None reported
+- Definition for each variable: 
+    - hvfhs_license_num: The TLC license number of the HVFHS base or business.
+      • HV0002: Juno
+      • HV0003: Uber
+      • HV0004: Via
+      • HV0005: Lyft
+    - request_datetime: Date/time when passenger requested to be picked up.
+    - on_scene_datetime: Date/time when driver arrived at the pick-up location.
+    - pickup_datetime : The date and time of the trip pick-up.
+    - dropoff_datetime: The date and time of the trip drop-off.
+    - PULocationID: TLC Taxi Zone in which the trip began.
+    - DOLocationID: TLC Taxi Zone in which the trip ended.
+    - trip_miles: Total miles for passenger trip.
+    - trip_time: Total time in seconds for passenger trip.
+    - base_passenger_fare: Base passenger fare before tolls, tips, taxes, and fees.
+    - tolls: Total amount of all tolls paid in trip.
+    - bcf: Total amount collected in trip for Black Car Fund.
+    - sales_tax: Total amount collected in trip for NYS sales tax.
+    - congestion_surcharge: Total amount collected in trip for NYS congestion surcharge.
+    - airport_fee: $2.50 for both drop off and pick up at LaGuardia, Newark, and John F.Kennedy airports.
+    - tips Total amount of tips received from passenger.
+    - driver_pay: Total driver pay (not including tolls or tips and net of commission, surcharges, or taxes).
+    - cbd_congestion_fee: Per-trip charge for MTA's Congestion Relief Zone starting Jan. 5, 2025.
+  
+```{r}
+# ---- Draft R translation (please review) ----
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+```
+
+## MTA Daily Dataset
+
+```{r}
+base_path = "~/Documents/DataScience/fa-25-econ-5166-group-3/data/processed"
+input_data_file = file.path(base_path, "hvfhv_CBD_final.parquet")
+```
+
+```{r}
+df <- read_parquet("/Users/alex/Desktop/FHVHV/hvfhv_CBD_final.parquet")
+```
+
+### Sample
+
+```{r}
+head(df)
+```
