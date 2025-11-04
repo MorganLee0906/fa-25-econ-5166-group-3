@@ -1,0 +1,64 @@
+---
+title: "Climate data Summary"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Data Description
+- Author:  JuChien, Yao
+- Date first created: 20251104
+- Background: This dataset contains daily (or 3-daily) PM2.5 and AQI data for 4 different spots in Manhattan.
+- Unit of observation: Daily, 3-daily
+- Sample period: January 2024 - July 2025 (some up to March 2025)
+- Known issues: None reported
+- Definition for each variable: 
+    - Date: year, month, date (a datetime object)
+    - region: a string indicating the stand of the observed data (four spots included in Manhattan)
+    - PM2.5: Average PM2.5 concentration of the day
+    - AQI: Average AQI of the day
+    - Daily Ridership: The total ridership for the day 
+
+```{r}
+# ---- Draft R translation (please review) ----
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+```
+
+## Climate data (Air quality data)
+
+```{r}
+base_path = "C:/114-1_Autumn/Data_science_and_social_inquiry/clone/fa-25-econ-5166-group-3/data/processed"
+input_data_file = file.path(base_path, "processed_pm2.5_AQI.csv")
+```
+
+```{r}
+df = read.csv(input_data_file) %>% select(-X)
+```
+
+### Sample
+
+```{r}
+head(df)
+```
+
+### Summary Stats
+
+```{r}
+df$region %>% unique()
+```
+
+```{r}
+df$PM2.5 %>%
+  summary()
+```
+
+```{r}
+df$AQI %>%
+  summary()
+```

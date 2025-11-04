@@ -11,7 +11,44 @@ output:
       smooth_scroll: true
 ---
 
-## Setting up
+# README
+
+-   **Author**: `JCYao`
+-   **Created At**: `2025-10`
+-   **Last Modified At**: `2025-11-04`
+
+------------------------------------------------------------------------
+
+## What does this file do?
+
+-   Load in the shp (geometric data) of Manhattan
+-   Load in the air quality data of 2024 and 2025
+-   Combine the two through geometric Processing
+-   Merge 2024 and 2025 Manhattan air quality data into a processed data `climate`
+------------------------------------------------------------------------
+
+## What does this file take?
+
+-   **Source Data Sets**:
+
+    1.  `taxi_zones.shp`
+
+    -   Description: The taxi zones in geometric form separated in grids (See in the below map)
+
+    2.  `ad_viz_plotval_data.csv`
+
+    -   Description: Air quality data from 2025, New York; preprocessed on the source website
+
+    3. `ad_viz_plotval_data_2024.csv`
+
+    -   Description: Air quality data from 2024, New York; preprocessed on the source website
+
+------------------------------------------------------------------------
+
+## What does this file output?
+
+-   `processed_pm2.5_AQI.csv`
+    -   Description: Clean data combining the daily (sometimes 3-daily) air quality data of four stations.
 
 ## Setting up
 
