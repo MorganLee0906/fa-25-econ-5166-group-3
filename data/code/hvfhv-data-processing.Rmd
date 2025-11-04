@@ -1,0 +1,234 @@
+---
+title: "Processing Taxi Data"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# README
+
+-   **Author**: `Yen-Chen Chou`
+-   **Created At**: `2025-09`
+-   **Last Modified At**: `2025-11-03`
+
+------------------------------------------------------------------------
+
+## What does this file do?
+
+-   Combine the raw data of fhvhv_tripdata from January 2024 to August 2025 into a single dataset.
+-   Eliminate 7 unneeded administrative columns: dispatching_base_num, originating_base_num, shared_request_flag, shared_match_flag, access_a_ride_flag, wav_request_flag, wav_match_flag.
+-   Filter out trips with negative fare or fee components
+
+------------------------------------------------------------------------
+
+## What does this file take?
+
+-   **Source Data Sets**:
+
+    1.  `/data/raw/fhvhv_tripdata_2024-01.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for January 2024.`
+
+    2.  `/data/raw/fhvhv_tripdata_2024-02.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for February 2024.`
+
+    3.  `/data/raw/fhvhv_tripdata_2024-03.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for March 2024.`
+
+    4.  `/data/raw/fhvhv_tripdata_2024-04.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for April 2024.`
+
+    5.  `fhvhv_tripdata_2024-05.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for May 2024.`
+
+    6.  `/data/raw/fhvhv_tripdata_2024-06.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for June 2024.`
+
+    7.  `/data/raw/fhvhv_tripdata_2024-07.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for July 2024.`
+
+    8.  `/data/raw/fhvhv_tripdata_2024-08.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for August 2024.`
+
+    9.  `/data/raw/fhvhv_tripdata_2024-09.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for September 2024.`
+
+    10.  `/data/raw/fhvhv_tripdata_2024-10.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for October 2024.`
+
+    11.  `/data/raw/fhvhv_tripdata_2024-11.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for November 2024.`
+
+    12.  `/data/raw/fhvhv_tripdata_2024-12.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for December 2024.`
+
+    13.  `/data/raw/fhvhv_tripdata_2025-01.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for January 2025.`
+
+    14.  `/data/raw/fhvhv_tripdata_2025-02.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for February 2025.`
+
+    15.  `/data/raw/fhvhv_tripdata_2025-03.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for March 2025.`
+
+    16.  `/data/raw/fhvhv_tripdata_2025-04.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for April 2025.`
+
+    17.  `/data/raw/fhvhv_tripdata_2025-05.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for May 2025.`
+
+    18.  `/data/raw/fhvhv_tripdata_2025-06.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for June 2025.`
+
+    19.  `/data/raw/fhvhv_tripdata_2025-07.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for July 2025.`
+
+    20.  `/data/raw/fhvhv_tripdata_2025-08.parquet`
+
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle for August 2025.`
+    
+------------------------------------------------------------------------
+
+## What does this file output?
+
+-   `/data/processed/hvfhv_CBD_final.parquet`
+    -   Description: `TLC Trip Record Data of High Volume For-Hire Vehicle from January 2024 to August 2025.`
+
+```{r}
+# Load packages
+library(arrow)
+library(dplyr)
+library(lubridate)
+library(janitor)
+library(readr)
+library(progressr)
+```
+
+```{r load_and_bind_data}
+# ---- Load and clean TLC HVFHV data safely ----
+library(arrow)
+library(dplyr)
+library(janitor)
+library(lubridate)
+
+# === 1. Define Directories ===
+data_dir   <- "/Users/alex/Desktop/FHVHV"
+output_dir <- "/Users/alex/Desktop/FHVHV/hvfhv_dataset"
+dir.create(output_dir, showWarnings = FALSE, recursive = TRUE)
+
+# === 2. Build Monthly File List ===
+month_seq  <- seq(as.Date("2024-01-01"), as.Date("2025-08-01"), by = "month")
+input_files <- sprintf("%s/fhvhv_tripdata_%s.parquet",
+                       data_dir, format(month_seq, "%Y-%m"))
+
+# === 3. Define Target CBD IDs ===
+target_ids <- c(4,12,13,45,48,50,68,79,87,88,90,100,107,113,114,125,137,144,148,
+                158,161,162,163,164,170,186,209,211,224,229,230,231,232,233,234,
+                246,249,261)
+
+# === 4. Process Files ===
+for (f in input_files) {
+  month_tag <- gsub(".parquet", "", basename(f))
+  file_out  <- file.path(output_dir, paste0(month_tag, "_CBD_cleaned.parquet"))
+  
+  # ---- Skip already processed files ----
+  if (file.exists(file_out)) {
+    message(sprintf("⏩ Skipping existing: %s", basename(file_out)))
+    next
+  }
+  
+  cat(sprintf("Processing: %s\n", basename(f)))
+  
+  tryCatch({
+    # ---- Read, clean, filter ----
+    df <- read_parquet(f) |>
+      clean_names() |>
+      # remove unwanted administrative columns
+      select(-c(dispatching_base_num,
+                originating_base_num,
+                shared_request_flag,
+                shared_match_flag,
+                access_a_ride_flag,
+                wav_request_flag,
+                wav_match_flag)) |>
+      # keep rows where pickup or dropoff is in CBD
+      filter(pu_location_id %in% target_ids | do_location_id %in% target_ids) |>
+      # remove trips with negative fare or fee components
+      filter(base_passenger_fare >= 0,
+             tolls >= 0,
+             bcf >= 0,
+             sales_tax >= 0,
+             congestion_surcharge >= 0,
+             airport_fee >= 0,
+             tips >= 0,
+             driver_pay >= 0) |>
+      as.data.frame()
+    
+    # ---- Write to disk ----
+    write_parquet(df, file_out)
+    cat(sprintf("Wrote (CBD + cleaned): %s\n", basename(file_out)))
+    
+    rm(df); gc()
+  }, error = function(e) {
+    warning(sprintf("⚠️ Failed on %s: %s", basename(f), e$message))
+  })
+}
+
+cat("All CBD-filtered and cleaned monthly files saved to:", output_dir, "\n")
+```
+
+
+```{r combine_all_cleaned_data}
+# ---- Combine all monthly cleaned files into one ----
+library(arrow)
+library(dplyr)
+
+input_dir <- "/Users/alex/Desktop/FHVHV/hvfhv_dataset"
+output_parquet <- "/Users/alex/Desktop/FHVHV/hvfhv_CBD_final.parquet"
+output_csv <- "/Users/alex/Desktop/FHVHV/hvfhv_CBD_final.csv"
+
+# List all *_CBD_cleaned.parquet files
+files <- list.files(input_dir, pattern = "_CBD_cleaned\\.parquet$", full.names = TRUE)
+
+if (length(files) == 0) {
+  stop(" No cleaned monthly files found in hvfhv_dataset.")
+}
+
+cat(sprintf(" Found %d cleaned monthly files. Combining now...\n", length(files)))
+
+# Read and combine them efficiently using Arrow
+hvfhv_combined <- open_dataset(files, format = "parquet") |> collect()
+
+# Write combined Parquet file
+write_parquet(hvfhv_combined, output_parquet)
+cat(sprintf("Combined Parquet written to: %s\n", output_parquet))
+
+# Clean up memory
+rm(hvfhv_combined); gc()
+
+cat("All monthly cleaned data successfully merged!\n")
+```
