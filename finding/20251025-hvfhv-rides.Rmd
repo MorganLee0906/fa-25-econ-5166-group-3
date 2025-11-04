@@ -1,0 +1,173 @@
+---
+title: "HVFHV Data Statistical Analysis"
+author: "Yen-Chen Chou"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+
+- **Author**: Yen-Chen Chou
+- **Created At**: 2025-11-03
+- **Research Motivation and Context (why are we interested in the findings?)**: This study aims to investigate the policy impact of New York City’s Central Business District (CBD) congestion fee on yellow taxis and high-volume for-hire vehicles (HVFHVs), focusing on changes in ridership, drivers’ revenue, and market share.
+- **Main Findings and Takeaways：**
+- **Future Direciton：**
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(fixest)
+library(arrow)
+library(progress)
+library(purrr)
+library(tidyr)
+library(lubridate)
+library(janitor)
+library(readr)
+library(progressr)
+library(purrr)
+```
+
+```{r}
+# ---- Load input data ----
+# Read
+df <- arrow::read_parquet("/Users/alex/Desktop/route/fa-25-econ-5166-group-3/data/processed/hvfhv_CBD_final.parquet")
+
+# Preview
+head(df, 10)
+```
+
+```{r}
+# ---- Summary statistics (numeric + categorical) ----
+
+# Numeric summary helper
+
+num_summ <- function(df) {
+num_vars <- names(df)[sapply(df, is.numeric)]
+if (length(num_vars) == 0) {
+return(tibble())
+}
+map_dfr(num_vars, function(v) {
+x <- df[[v]]
+tibble(
+variable = v,
+n = sum(!is.na(x)),
+mean = mean(x, na.rm = TRUE),
+min = min(x, na.rm = TRUE),
+p25 = quantile(x, 0.25, na.rm = TRUE, names = FALSE),
+median = median(x, na.rm = TRUE),
+p75 = quantile(x, 0.75, na.rm = TRUE, names = FALSE),
+max = max(x, na.rm = TRUE),
+sd = sd(x, na.rm = TRUE)
+)
+})
+}
+
+# Categorical top-10 summary helper
+cat_summ <- function(df, max_levels = 10) {
+cat_vars <- names(df)[sapply(df, function(x) is.character(x) || is.factor(x))]
+if (length(cat_vars) == 0) {
+return(tibble())
+}
+map_dfr(cat_vars, function(v) {
+tab <- df %>%
+count(!!sym(v), name = "n", sort = TRUE) %>%
+mutate(pct = n / sum(n)) %>%
+slice_head(n = max_levels) %>%
+mutate(variable = v) %>%
+relocate(variable, .before = 1)
+names(tab)[2] <- "level"
+tab
+})
+}
+
+# Generate summaries
+numeric_summary <- num_summ(df)
+categorical_summary <- cat_summ(df)
+
+# Print summaries
+if (nrow(numeric_summary) > 0) {
+cat("## Numeric Variables: Summary Statistics\n")
+print(numeric_summary)
+} else {
+cat("## Numeric Variables: (none detected)\n")
+}
+
+cat("\n")
+
+if (nrow(categorical_summary) > 0) {
+cat("## Categorical Variables: Top-10 Levels\n")
+print(categorical_summary)
+} else {
+cat("## Categorical Variables: (none detected)\n")
+}
+```
+
+```{r}
+# ---- Inputs ----
+policy_start <- as.Date("2025-01-05")
+start_date   <- as.Date("2024-01-01")
+end_date     <- as.Date("2025-08-31")
+
+# ---- Weekly aggregation ----
+weekly <- df |>
+  mutate(
+    trip_date  = as.Date(pickup_datetime),
+    week_id    = floor(as.numeric(trip_date - policy_start) / 7),
+    week_start = policy_start + (week_id * 7)
+  ) |>
+  group_by(week_start) |>
+  summarise(trips = n(), .groups = "drop") |>
+  mutate(
+    week_end = pmin(week_start + 6, end_date),
+    n_days   = 7
+  ) |>
+  filter(
+    week_start >= start_date,
+    week_end   <= end_date
+  ) |>
+  arrange(week_start)
+
+# ---- Plot weekly ridership ----
+ggplot(weekly, aes(x = week_start, y = trips)) +
+  geom_col(fill = "slateblue3", width = 6) +  
+  geom_vline(
+    xintercept = as.numeric(policy_start),
+    linetype   = "dashed",
+    color      = "black",                  
+    linewidth  = 0.3
+  ) +
+  annotate(
+    "text",
+    x      = policy_start + 3,
+    y      = max(weekly$trips, na.rm = TRUE) * 0.97,
+    label  = "Policy start: Jan 5, 2025",
+    color  = "black",
+    hjust  = 0,
+    vjust  = 1,
+    size   = 3.8
+  ) +
+  scale_x_date(
+    date_breaks = "1 month",
+    date_labels = "%b %y",
+    expand = c(0.03, 0.03)
+  ) +
+  labs(
+    title    = "Weekly Ridership (HVFHV Trips)",
+    subtitle = "7-day buckets aligned with CBD policy start (Jan 5, 2025)",
+    x        = "Week Start Date",
+    y        = "Number of Trips"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.text.x  = element_text(angle = 45, hjust = 1),
+    plot.title   = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 10, color = "gray30"),
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
+```
