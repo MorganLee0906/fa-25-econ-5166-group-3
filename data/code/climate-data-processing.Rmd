@@ -13,6 +13,8 @@ output:
 
 ## Setting up
 
+## Setting up
+
 ```{r Importing data, include = FALSE} 
 library(sf)
 library(tmap)
@@ -26,21 +28,21 @@ ny_air = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_qual
 ```
 
 ```{r, eval=FALSE}
-pre_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhv_tripdata_2024-07.parquet")
+#pre_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhv_tripdata_2024-07.parquet")
 
-pre_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/green_tripdata_2024-07.parquet")
+#pre_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/green_tripdata_2024-07.parquet")
 
-pre_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/yellow_tripdata_2024-07.parquet")
+#pre_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/yellow_tripdata_2024-07.parquet")
 
-pre_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhvhv_tripdata_2024-07.parquet")
+#pre_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhvhv_tripdata_2024-07.parquet")
 
-post_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhv_tripdata_2025-07.parquet")
+#post_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhv_tripdata_2025-07.parquet")
 
-post_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/yellow_tripdata_2025-07.parquet")
+#post_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/yellow_tripdata_2025-07.parquet")
 
-post_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/green_tripdata_2025-07.parquet")
+#post_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/green_tripdata_2025-07.parquet")
 
-post_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhvhv_tripdata_2025-07.parquet")
+#post_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhvhv_tripdata_2025-07.parquet")
 ```
 
 # Showing Manhattan shp
@@ -95,20 +97,25 @@ unique(sites_in_mht$zone)
 
 ```{r}
 evile_df_2025 = sites_in_mht %>%
-  filter(zone == "East Village") %>%
   as.data.frame() %>%
   rename(
     "PM2.5"= Daily.Mean.PM2.5.Concentration,
-    "AQI" = Daily.AQI.Value) %>%
-  select(Date, PM2.5, AQI)
+    "AQI" = Daily.AQI.Value,
+    "region" = zone) %>%
+  select(Date, region, PM2.5, AQI)
 ```
 
 ```{r}
-evile_df_2024 = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/2024-pm2.5.csv") %>%
+evile_df_2024 = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/ad_viz_plotval_data_2024.csv") %>%
+  filter(!is.na(Site.Latitude) & !is.na(Site.Longitude)) %>%
+  st_as_sf(coords = c("Site.Longitude", "Site.Latitude"), crs = 4326) %>%
+  st_intersection(mht_shp) %>%
+  as.data.frame() %>%
   rename(
     "PM2.5"= Daily.Mean.PM2.5.Concentration,
-    "AQI" = Daily.AQI.Value) %>%
-  select(Date, PM2.5, AQI)
+    "AQI" = Daily.AQI.Value,
+    "region" = zone) %>%
+  select(Date, region, PM2.5, AQI)
 
 evile_df = rbind(evile_df_2024, evile_df_2025)
 write.csv(evile_df, file = "C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/processed_pm2.5_AQI.csv")
