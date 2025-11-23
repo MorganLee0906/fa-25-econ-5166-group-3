@@ -1,0 +1,154 @@
+---
+title: "20251123-traffic-speed-plot"
+author: "Cheng-Heng, Yuan"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+
+- **Author**: `<Cheng-Heng, Yuan>`
+- **Created At**: `<2025-11-23>`
+- **Research Motivation and Context (why are we interested in the findings?)：** We want to see the average speed change after the implementation of congestion fee policy
+- **Main Findings and Takeaways：** Both the smoothed daily trends and the hour-of-day profiles show that traffic speeds inside the CBD increased following the introduction of the congestion fee, with the largest improvements occurring during peak travel hours. In contrast, speeds outside the CBD remained broadly stable, suggesting that the policy eased central congestion without shifting traffic burdens to surrounding areas.
+- **Future Direciton：** Further analysis should examine weekday–weekend differences and longer-term adjustment patterns, as well as conduct formal causal estimation (e.g., DID) to validate the robustness of the observed improvements.
+
+```{r}
+# Load packages here
+library(dplyr)
+library(fixest)
+library(tidyverse)
+library(forcats)
+library(lubridate)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(slider)
+```
+
+```{r}
+# Load input data here and please finish all the data manipulation here.
+processed_speeds <- read.csv("speed-mht.csv")
+speeds <- processed_speeds %>%
+  select(ID, SPEED, TRAVEL_TIME, DATA_AS_OF, is_in_CBD) %>%
+  filter(SPEED > 0, TRAVEL_TIME > 0) %>%
+  rename(id = ID, speed = SPEED, travel_time = TRAVEL_TIME, datetime = DATA_AS_OF) %>%
+  mutate(
+    is_in_CBD = case_when(is_in_CBD == "not in CBD" ~ "0", is_in_CBD == "partially or all in CBD" ~ "1"),
+    is_in_CBD = factor(is_in_CBD, levels = c("0", "1")),
+    datetime = ymd_hms(datetime)
+    )
+head(speeds, 10)
+
+# Objects for later analysis
+weekly_speeds <- speeds %>%
+  mutate(date = as.Date(datetime)) %>%
+  group_by(is_in_CBD, date) %>%
+  summarise(
+    wt_speed = sum(speed * travel_time) / sum(travel_time),
+    n = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(is_in_CBD, date) %>%
+  group_by(is_in_CBD) %>%
+  mutate(
+    ma7 = slide_dbl(wt_speed, mean, .before = 6, .complete = TRUE)
+  ) %>%
+  ungroup()
+head(weekly_speeds, 10)
+
+hourly_speeds <- speeds %>%
+  mutate(
+    hour = lubridate::hour(datetime),
+    year = lubridate::year(datetime)
+  ) %>%
+  group_by(is_in_CBD, year, hour) %>%
+  summarise(
+    wt_speed = sum(speed * travel_time) / sum(travel_time),
+    .groups = "drop"
+  )
+head(hourly_speeds, 10)
+
+# Finish this block by printing the first ten observations of the data.
+# Note:
+# - You may only read data from /data/processed.
+# - Files in /data/processed should already be cleaned and prepared for analysis.
+# - Beyond simple filtering of observations or generating a small number of variables,
+#   further data manipulation is not allowed. If more extensive changes are needed,
+#   update the source data instead.
+
+```
+
+
+```{r}
+# Before conducting the analysis, report summary statistics for all variables 
+# that will be used in this notebook:
+#   - For numeric variables: mean, min, 25th percentile, median, 75th percentile, 
+#     max, standard deviation, and number of observations.
+#   - For categorical variables: number of observations and the counts/percentages 
+#     of the ten most frequent categories.
+# Conclude this block with the complete summary statistics.
+
+# number of observations
+nrow(speeds)
+
+summary_stats <- function(var) {
+  s <- summary(speeds[[var]])
+  sd_val <- sd(speeds[[var]], na.rm = TRUE)
+
+  tibble(
+    variable = var,
+    stat = c(names(s), "sd"),
+    value = c(as.character(s), sprintf("%.4f", sd_val))
+  )
+}
+
+vars <- c("id", "speed", "travel_time", "datetime")
+combined_summary <- map_dfr(vars, summary_stats) %>%
+  pivot_wider(
+    names_from = stat,
+    values_from = value
+  )
+combined_summary
+
+#is_in_CBD
+speeds %>%
+  count(is_in_CBD) %>%
+  mutate(pct = n / sum(n))
+```
+
+### The actual analysis starts below
+```{r}
+ggplot(weekly_speeds, aes(x = date, y = ma7, color = is_in_CBD)) +
+  geom_line(size = 1.1, alpha = 0.9) +
+  geom_vline(xintercept = as.Date("2025-01-01"), linetype = "dashed") +
+  labs(
+    title = "7-Day Moving Average Speed (Weighted)",
+    y = "Speed (mph)",
+    color = "Inside CBD"
+  ) +
+  theme_minimal()
+```
+The congestion charge appears to have raised CBD traffic speeds noticeably after January 1, 2025, while speeds outside the CBD remained roughly stable, indicating a clear post-policy improvement in central Manhattan mobility.
+
+```{r}
+ggplot(hourly_speeds, aes(x = hour, y = wt_speed, color = factor(year))) +
+  geom_line(size = 1.1) +
+  facet_wrap(~ is_in_CBD, ncol = 1,
+             labeller = labeller(is_in_CBD = c(`0` = "Outside CBD", `1` = "Inside CBD"))) +
+  scale_color_manual(values = c("2024" = "firebrick", "2025" = "steelblue")) +
+  labs(
+    title = "Hourly Traffic Speed Profile: 2024 vs 2025",
+    x = "Hour of Day",
+    y = "Weighted Average Speed (mph)",
+    color = "Year"
+  ) +
+  theme_minimal(base_size = 14)
+```
+Compared with 2024, traffic speeds inside the CBD in 2025 were consistently higher across nearly all hours—especially during the morning peak—while speeds outside the CBD showed little change, indicating that the congestion charge primarily improved mobility within the charged zone rather than citywide.
+
+
