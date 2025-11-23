@@ -133,6 +133,7 @@ ggplot(weekly_speeds, aes(x = date, y = ma7, color = is_in_CBD)) +
   ) +
   theme_minimal()
 ```
+
 The congestion charge appears to have raised CBD traffic speeds noticeably after January 1, 2025, while speeds outside the CBD remained roughly stable, indicating a clear post-policy improvement in central Manhattan mobility.
 
 ```{r}
@@ -149,6 +150,7 @@ ggplot(hourly_speeds, aes(x = hour, y = wt_speed, color = factor(year))) +
   ) +
   theme_minimal(base_size = 14)
 ```
+
 Compared with 2024, traffic speeds inside the CBD in 2025 were consistently higher across nearly all hours—especially during the morning peak—while speeds outside the CBD showed little change, indicating that the congestion charge primarily improved mobility within the charged zone rather than citywide.
 
 
