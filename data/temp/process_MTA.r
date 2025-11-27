@@ -11,14 +11,14 @@ df_25 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__Be
 # We found that data only provide average ridership of every weekday in every month.
 
 df_24 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__2024_20250928.csv")
-df_24 <- df_24 %>%
-    filter(Month >= 7)
+
 
 # Bind 2 years
 df <- rbindlist(list(df_24, df_25), use.names = TRUE, fill = TRUE)
 
 # Save data
 write_parquet(df, "~/Documents/DataScience/data.parquet", compression = "snappy")
+rm(list = ls())
 
 # Open data
 ds_new <- open_dataset("~/Documents/DataScience/data.parquet", format = "parquet")
