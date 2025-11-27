@@ -52,31 +52,3 @@ head(df)
 df$daily_sum %>%
   summary()
 ```
-
-```{r}
-df_agg <- df %>%
-  filter(Year %in% c(2024, 2025), Month <= 6) %>%
-  group_by(Year, Month) %>%
-  summarise(monthly_sum = sum(daily_sum, na.rm = TRUE), .groups = "drop") %>%
-  mutate(Year = as.factor(Year))
-
-df_agg %>% 
-  ggplot(aes(x = Month, y = monthly_sum, color = Year)) +
-    geom_line(linewidth = 1.2) +
-    geom_point(size = 3) +
-    scale_x_continuous(breaks = 1:6) +
-    labs(
-      title = "Monthly Total MTA Ridership from Jan to June (2024-2025)",
-      x = "Month",
-      y = "Total Monthly Ridership",
-      color = "Year"
-    ) +
-    theme_bw() +
-    theme(
-      plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),
-      axis.text = element_text(size = 12),
-      axis.title = element_text(size = 14),
-      legend.position = "bottom"
-    )
-
-```
