@@ -1,0 +1,204 @@
+---
+title: "20251128-traffic-speed-plot"
+author: "Cheng-Heng, Yuan"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+
+- **Author**: `<Cheng-Heng, Yuan>`
+- **Created At**: `<2025-11-28>`
+- **Research Motivation and Context (why are we interested in the findings?)：** We want to see the average speed change after the implementation of congestion fee policy
+- **Main Findings and Takeaways：** Traffic speeds inside the CBD increased noticeably during the first six months following the implementation of the congestion fee, but the improvement diminished by the seventh month. Differences between weekdays and weekends appear minimal and do not meaningfully explain the observed speed changes.
+Future Direction: Future work should apply formal causal methods (e.g., difference-in-differences) to assess the robustness and persistence of these effects.
+- **Future Direction：** Future analysis should apply formal causal methods—such as Difference-in-Differences (DID) estimation—to assess the robustness and persistence of these effects.
+
+```{r}
+# Load packages here
+library(dplyr)
+library(fixest)
+library(tidyverse)
+library(forcats)
+library(lubridate)
+library(tidyr)
+library(purrr)
+library(ggplot2)
+library(slider)
+```
+
+```{r}
+# Load input data here and please finish all the data manipulation here.
+processed_speeds <- read.csv("speed-mht.csv")
+speeds <- processed_speeds %>%
+  select(ID, SPEED, TRAVEL_TIME, DATA_AS_OF, is_in_CBD) %>%
+  rename(id = ID, speed = SPEED, travel_time = TRAVEL_TIME, datetime = DATA_AS_OF) %>%
+  mutate(
+    is_in_CBD = case_when(is_in_CBD == "not in CBD" ~ "0", is_in_CBD == "partially or all in CBD" ~ "1"),
+    is_in_CBD = factor(is_in_CBD, levels = c("0", "1")),
+    datetime = ymd_hms(datetime),
+    hour = lubridate::hour(datetime),
+    month = lubridate::month(datetime),
+    year = lubridate::year(datetime),
+    is_weekend = lubridate::wday(datetime) %in% c(1, 7)
+  ) %>%
+  filter(speed > 0, travel_time > 0, month <= 10)
+
+head(speeds, 10)
+
+# Object for later analysis
+hourly_speeds_m <- speeds %>%
+  group_by(is_in_CBD, year, month, hour) %>%
+  summarise(
+    wt_speed = sum(speed * travel_time) / sum(travel_time),
+    .groups = "drop"
+  )
+head(hourly_speeds_m, 10)
+
+hourly_speeds_ww <- speeds %>%
+  group_by(is_in_CBD, year, is_weekend, hour) %>%
+  summarise(
+    wt_speed = sum(speed * travel_time) / sum(travel_time),
+    .groups = "drop"
+  )
+head(hourly_speeds_ww, 10)
+
+hourly_speeds_mww <- speeds %>%
+  group_by(is_in_CBD, year, month, is_weekend, hour) %>%
+  summarise(
+    wt_speed = sum(speed * travel_time) / sum(travel_time),
+    .groups = "drop"
+  )
+head(hourly_speeds_mww, 10)
+
+# Finish this block by printing the first ten observations of the data.
+# Note:
+# - You may only read data from /data/processed.
+# - Files in /data/processed should already be cleaned and prepared for analysis.
+# - Beyond simple filtering of observations or generating a small number of variables,
+#   further data manipulation is not allowed. If more extensive changes are needed,
+#   update the source data instead.
+
+```
+
+
+```{r}
+# Before conducting the analysis, report summary statistics for all variables 
+# that will be used in this notebook:
+#   - For numeric variables: mean, min, 25th percentile, median, 75th percentile, 
+#     max, standard deviation, and number of observations.
+#   - For categorical variables: number of observations and the counts/percentages 
+#     of the ten most frequent categories.
+# Conclude this block with the complete summary statistics.
+
+# number of observations
+nrow(speeds)
+
+summary_stats <- function(var) {
+  s <- summary(speeds[[var]])
+  sd_val <- sd(speeds[[var]], na.rm = TRUE)
+
+  tibble(
+    variable = var,
+    stat = c(names(s), "sd"),
+    value = c(as.character(s), sprintf("%.4f", sd_val))
+  )
+}
+
+vars <- c("id", "speed", "travel_time", "datetime")
+combined_summary <- map_dfr(vars, summary_stats) %>%
+  pivot_wider(
+    names_from = stat,
+    values_from = value
+  )
+combined_summary
+
+#is_in_CBD
+speeds %>%
+  count(is_in_CBD) %>%
+  mutate(pct = n / sum(n))
+```
+
+### The actual analysis starts below
+```{r, fig.width=16, fig.height=8, out.width='100%', fig.align='center'}
+ggplot(
+  hourly_speeds_m,
+  aes(x = hour, y = wt_speed, color = factor(year))
+) +
+  geom_line(size = 1.0) +
+  facet_grid(
+    is_in_CBD ~ month,
+    labeller = labeller(
+      is_in_CBD = c(`0` = "Outside CBD", `1` = "Inside CBD"),
+      month = as.character
+    )
+  ) +
+  scale_color_manual(values = c("2024" = "firebrick", "2025" = "steelblue")) +
+  labs(
+    title = "Hourly Traffic Speed by Month: 2024 vs 2025",
+    x = "Hour of Day",
+    y = "Weighted Average Speed (mph)",
+    color = "Year"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+Hourly profiles by month show that congestion pricing effects inside the CBD were most pronounced during the first six months following implementation, with later months exhibiting attenuation toward baseline levels, likely reflecting behavioral adaptation and seasonal traffic pressures.
+
+```{r, fig.width=16, fig.height=8, out.width='100%', fig.align='center'}
+ggplot(
+  hourly_speeds_ww,
+  aes(x = hour, y = wt_speed, color = factor(year))
+) +
+  geom_line(size = 1.0) +
+  facet_grid(
+    is_in_CBD ~ is_weekend,
+    labeller = labeller(
+      is_in_CBD = c(`0` = "Outside CBD", `1` = "Inside CBD"),
+      is_weekend = c(`TRUE` = "Weekend", `FALSE` = "Weekday"),
+      is_weekendh = as.character
+    )
+  ) +
+  scale_color_manual(values = c("2024" = "firebrick", "2025" = "steelblue")) +
+  labs(
+    title = "Hourly Traffic Speed by Weekday/Weekend: 2024 vs 2025",
+    x = "Hour of Day",
+    y = "Weighted Average Speed (mph)",
+    color = "Year"
+  ) +
+  theme_minimal(base_size = 13)
+```
+
+Average speeds increased significantly in 2025 relative to 2024 for both weekdays and weekends, with no meaningful differences observed between the two.
+
+```{r, fig.width=16, fig.height=8, out.width='100%', fig.align='center'}
+ggplot(hourly_speeds_mww, aes(x = hour, y = wt_speed, color = factor(year))) +
+  geom_line(size = 1) +
+  facet_grid(
+    is_in_CBD + is_weekend ~ month,
+    labeller = labeller(
+      is_in_CBD = c(`0` = "Outside CBD", `1` = "Inside CBD"),
+      is_weekend = c(`FALSE` = "Weekday", `TRUE` = "Weekend"),
+      month = as.character
+    )
+  ) +
+  scale_color_manual(values = c("2024" = "firebrick", "2025" = "steelblue")) +
+  labs(
+    title = "Hourly Traffic Speed by Month, CBD Status, and Weekday/Weekend",
+    x = "Hour of Day",
+    y = "Weighted Average Speed (mph)",
+    color = "Year"
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(
+    panel.spacing = unit(0.7, "lines"),
+    strip.text = element_text(size = 9)
+  )
+```
+
+After accounting for monthly and calendar effects, 2025 exhibits higher CBD speeds across most hours of the day, suggesting a generalized congestion reduction rather than hour-specific adjustments.
+
