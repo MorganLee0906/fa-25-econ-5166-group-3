@@ -25,6 +25,14 @@ ds_new <- open_dataset("~/Documents/DataScience/data.parquet", format = "parquet
 ds_new <- ds_new %>%
     collect()
 
+unique_stations <- bind_rows(
+  ds_new %>% select(name = `Origin Station Complex Name`, lat = `Origin Latitude`, lon = `Origin Longitude`),
+  ds_new %>% select(name = `Destination Station Complex Name`,   lat = `Destination Latitude`,   lon = `Destination Longitude`)
+) %>% 
+  distinct()
+
+write_csv(unique_stations, "~/Documents/DataScience/fa-25-econ-5166-group-3/data/raw/MTA_stations.csv")
+
 # Overall Trend
 overall_trend <- ds_new %>%
     select(c(Year, Month, `Estimated Average Ridership`)) %>%
