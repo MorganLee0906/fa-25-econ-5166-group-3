@@ -1,0 +1,161 @@
+---
+title: "MTA spatial processing"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+# Global options for knitr go here if needed
+## knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# README
+
+- **Author**: `<J.C.Yao>`
+- **Created At**: `<2025-11-29>`
+- **Last Modified At**: `<2025-11-29>`
+
+---
+
+## What does this file do?
+
+- `<Identify whether the MTA station locates inside or outside the CBD>`
+
+---
+
+## What does this file take?
+
+- **Source Data Sets**:  
+  1. `</data/raw/<MTA_stations.csv>` 
+    - Description: `<The names, latitudes, and longitudes of MTA stations>` 
+  2. `</data/raw/taxi_zones.shp>`
+    - Description: `<The regions and ids of Manhattan used for congestion fee>` 
+    
+---
+
+## What does this file output?
+
+- `/data/temp/<mta-cbd-stations.csv>`  
+  - Description: `<The names, latitudes, longitudes, and *in_CBD* status of MTA stations>`
+
+```{r warning=FALSE}
+# Load packages here
+library(sf)
+library(tmap)
+library(dplyr)
+library(tidyr)
+library(arrow)
+library(purrr)
+library(stringr)
+library(lubridate)
+```
+
+```{r}
+# Load input here
+mta_station = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/clone/fa-25-econ-5166-group-3/data/raw/MTA_stations.csv")
+mht_shp = st_read("C:/114-1_Autumn/Data_science_and_social_inquiry/clone/fa-25-econ-5166-group-3/data/raw/taxi_zones.shp") %>%
+  filter(borough == "Manhattan") 
+
+str(mta_station)
+```
+
+## Selecting policy zones (CBD) inside Manhattan
+
+### data processing
+
+```{r} 
+policy_zone_names <- c(
+  "Alphabet City", "Battery Park", "Battery Park City", "Chinatown",
+  "Clinton East", "Clinton West", "East Chelsea", "East Village",
+  "Financial District North", "Financial District South", "Flatiron",
+  "Garment District", "Gramercy", "Greenwich Village North",
+  "Greenwich Village South", "Hudson Sq", "Kips Bay",
+  "Little Italy/NoLiTa", "Lower East Side", "Meatpacking/West Village West",
+  "Midtown Center", "Midtown East", "Midtown North", "Midtown South",
+  "Murray Hill", "Penn Station/Madison Sq West", "Seaport", "SoHo",
+  "Stuy Town/Peter Cooper Village", "Times Sq/Theatre District",
+  "TriBeCa/Civic Center", "Two Bridges/Seward Park", "UN/Turtle Bay South",
+  "Union Sq", "West Chelsea/Hudson Yards", "West Village",
+  "World Trade Center", "Sutton Place/Turtle Bay North"
+)
+
+policy_zones <- mht_shp %>%
+  filter(zone %in% policy_zone_names) 
+```
+
+### plotting selected regions and Manhattan
+
+```{r}
+mht_bg = tm_shape(mht_shp) + tm_polygons()
+overlap_policy = mht_bg +
+tm_shape(policy_zones) +
+  tm_polygons(fill = "red")
+
+print(overlap_policy)
+```
+## Merging data with MTA stations
+
+### Plotting the stations on the map
+
+```{r}
+# 1. Convert dataframe to spatial object (sf)
+# Note: coords takes c("x", "y"), so we use c("Lon", "Lat")
+mta_sf <- st_as_sf(mta_station, coords = c("Lon", "Lat"), crs = 4326)
+
+# 2. Ensure both map and stations share the same projection
+# We transform stations to match the shapefile's projection
+mta_sf <- st_transform(mta_sf, st_crs(mht_shp))
+
+# 3. Plot stations over the Manhattan background
+overlap_policy + 
+tm_shape(mta_sf) + 
+  tm_dots(fill = "blue", size = 0.25) +
+  tm_layout(title = "MTA Stations Locations")
+```
+
+### Distributing in_CBD values based on locations
+
+```{r}
+# 1. Identify intersections
+# st_intersects returns a list. If a point is inside the CBD, the list length is > 0.
+intersects_stations <- st_intersects(mta_sf, policy_zones)
+
+# 2. Create the dummy variable
+# If the length of the intersection is > 0, it is in the CBD (1), otherwise 0.
+mta_sf <- mta_sf %>%
+  mutate(in_CBD = ifelse(lengths(intersects_stations) > 0, 1, 0))
+
+# 3. View the first few rows to verify
+head(mta_sf)
+```
+
+### Checking validity with colors
+
+```{r}
+# Define a color palette: 0 = Blue (Outside), 1 = green (Inside)
+overlap_policy + 
+tm_shape(mta_sf) + 
+  tm_dots(col = "in_CBD", 
+          style = "cat", 
+          palette = c("blue", "green"), 
+          title = "In CBD Zone or not?",
+          size = 0.25) +
+  tm_layout(title = "MTA Stations: CBD vs Non-CBD")
+```
+The identification seems correct as the green spots are all located in the policy zones; while the blue dots are all loacted outside.
+
+## Final: Exporting new csv
+
+```{r}
+mta_df = mta_sf %>%
+  st_drop_geometry() %>%
+  as.data.frame()
+
+mta_station = mta_station %>%
+  left_join(mta_df, by = "Name")
+
+write.csv(mta_station, file = "C:/114-1_Autumn/Data_science_and_social_inquiry/clone/fa-25-econ-5166-group-3/data/temp/mta-cbd-stations.csv")
+```
