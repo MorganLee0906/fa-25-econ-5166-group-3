@@ -1,0 +1,172 @@
+---
+title: "NYC Mapping"
+author: "Yao, Ju-Chien b12303125"
+date: "`r Sys.Date()`"
+output: 
+  html_notebook:
+    toc: true
+    toc_depth: 3
+    toc_float:
+      collapsed: false
+      smooth_scroll: true
+---
+
+## Setting up
+
+```{r Importing data, include = FALSE} 
+library(sf)
+library(tmap)
+library(dplyr)
+library(tidyr)
+library(arrow)
+library(purrr)
+library(stringr)
+library(lubridate)
+
+# Reading Data
+mht_shp = st_read("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_map/taxi_zones.shp") %>%
+  filter(borough == "Manhattan") 
+
+speed_df = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/clone/fa-25-econ-5166-group-3/data/raw/Traffic_Speeds_filtered_2022_to_2025Oct.csv") %>%
+  mutate(DATA_AS_OF = parse_date_time(DATA_AS_OF, orders = "Y b d I:M:S p")) %>%
+  filter(DATA_AS_OF > as.POSIXct("2024-01-01 00:00:00", tz = "America/New_York")) 
+
+#pre_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhv_tripdata_2024-07.parquet")
+
+#pre_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/green_tripdata_2024-07.parquet")
+
+#pre_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/yellow_tripdata_2024-07.parquet")
+
+#pre_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhvhv_tripdata_2024-07.parquet")
+
+#post_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhv_tripdata_2025-07.parquet")
+
+#post_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/yellow_tripdata_2025-07.parquet")
+
+#post_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/green_tripdata_2025-07.parquet")
+
+#post_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhvhv_tripdata_2025-07.parquet")
+```
+
+## Transforming coordinates 
+
+```{r}
+speed_sf <- speed_df %>%
+  mutate(
+    geometry = map(LINK_POINTS, function(line_str) {
+      
+      # Split into coordinate pairs (by one or more spaces)
+      coords <- str_split(str_trim(line_str), " +")[[1]]
+      
+      # Keep only those that contain a comma (valid "lat,lon" pair)
+      coords <- coords[str_detect(coords, ",")]
+      
+      # If still nothing valid, return empty geometry
+      if (length(coords) == 0) {
+        return(st_multipoint())
+      }
+      
+      # Split each pair into lat/lon, safely handle errors
+      mat <- do.call(rbind, str_split(coords, ","))
+      mat <- suppressWarnings(apply(mat, 2, as.numeric))  # convert to numeric
+      
+      # Remove rows with NA (invalid coordinates)
+      mat <- mat[complete.cases(mat), ]
+      
+      # If nothing remains, return empty geometry
+      if (nrow(mat) == 0) {
+        return(st_multipoint())
+      }
+      
+      # Convert to (lon, lat) order for sf (WGS84 expects this order)
+      mat <- matrix(c(mat[,2], mat[,1]), ncol = 2)
+      
+      # Create MULTIPOINT geometry
+      st_multipoint(mat)
+    })
+  ) %>%
+  st_sf(crs = 4326)  # WGS84
+```
+## Selecting regions within Manhattan
+
+### The origin background
+
+```{r}
+mht_bg = tm_shape(mht_shp) +
+  tm_polygons()
+
+tm_shape(mht_shp) +
+  tm_polygons()
+```
+
+### Marking CBD with red
+
+```{r}
+policy_zone_names <- c(
+  "Alphabet City", "Battery Park", "Battery Park City", "Chinatown",
+  "Clinton East", "Clinton West", "East Chelsea", "East Village",
+  "Financial District North", "Financial District South", "Flatiron",
+  "Garment District", "Gramercy", "Greenwich Village North",
+  "Greenwich Village South", "Hudson Sq", "Kips Bay",
+  "Little Italy/NoLiTa", "Lower East Side", "Meatpacking/West Village West",
+  "Midtown Center", "Midtown East", "Midtown North", "Midtown South",
+  "Murray Hill", "Penn Station/Madison Sq West", "Seaport", "SoHo",
+  "Stuy Town/Peter Cooper Village", "Times Sq/Theatre District",
+  "TriBeCa/Civic Center", "Two Bridges/Seward Park", "UN/Turtle Bay South",
+  "Union Sq", "West Chelsea/Hudson Yards", "West Village",
+  "World Trade Center", "Sutton Place/Turtle Bay North"
+)
+
+mht_shp = mht_shp %>%
+  st_transform(crs = st_crs(speed_sf))
+
+policy_zones <- mht_shp %>%
+  filter(zone %in% policy_zone_names) 
+
+overlap_policy = mht_bg +
+tm_shape(policy_zones) +
+  tm_polygons(fill = "red")
+
+
+```
+
+## Illustrated example 
+
+This contains the map of the first 150 rows of our data.
+
+```{r}
+overlap_policy + 
+tm_shape(speed_sf[1:150, ]) + 
+  tm_dots()
+```
+
+Note that the dots outside the island indicates the bridges connecting other parts of the city to Manhattan.
+
+## Computing in/out of CBD
+
+```{r}
+intersections <- st_intersects(speed_sf, policy_zones)  # MULTIPOINT vs polygons
+
+speed_sf$is_in_CBD <- case_when(
+  lengths(intersections) == 0 ~ "not in CBD",
+  ##lengths(intersections) == st_geometry(speed_sf) %>% lengths() ~ "all in CBD",
+  ##lengths(intersections) - 1 == st_geometry(speed_sf) %>% lengths() ~ "all in CBD",
+  TRUE ~ "partially or all in CBD"
+)
+
+export_df = speed_sf %>% st_drop_geometry()
+```
+
+## Checking algorithm
+
+```{r}
+overlap_policy +
+  tm_shape(speed_sf[4900:5000,]) +
+  tm_dots(col = "is_in_CBD", palette = c("blue","lightgreen"), size = 0.3, title = "CBD Status")
+```
+
+## Exporting new csv
+
+```{r}
+write.csv(export_df, file = "C:/114-1_Autumn/Data_science_and_social_inquiry/clone/fa-25-econ-5166-group-3/data/processed/speed-mht.csv")
+```
