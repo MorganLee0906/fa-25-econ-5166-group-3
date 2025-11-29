@@ -1,0 +1,562 @@
+---
+title: "Statistical Analysis Template (Converted from Jupyter)"
+author: "Auto-converted"
+output: html_document
+date: "2025-11-29"
+---
+
+
+
+# Background
+
+- **Author**: `<Ju-Chien, Yao>`
+- **Created At**: `<2025/11/03>`
+- **Research Motivation and Context (why are we interested in the findings?)：** We want to see how the air quality changes in different regions after the implementation of congestion fee.
+- **Main Findings and Takeaways：** The regional effect is not apparent. Maybe some control variable should be added.
+- **Future Direciton：** Add temperature, precipitation and other climate variables; Apply DID or GSC.
+
+
+``` r
+# Load packages here
+remove(list = ls()) 
+library(sf)
+library(tmap)
+library(dplyr)
+library(tidyr)
+library(arrow)
+library(ggplot2)
+library(lubridate)
+library(tidysynth)
+library(stringr)
+library(fixest)
+```
+
+### 讀資料
+
+
+``` r
+# Load input data here and please finish all the data manipulation here.
+# Assuming your dataframe is named 'control'
+
+## Reading Data
+climate = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/processed_pm2.5_AQI.csv") %>% 
+  select(c(-X)) %>%
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y"))
+
+## Produce weekly data
+climate_weekly <- climate %>%
+  # Create a "week" variable from the datetime column
+  mutate(week = floor_date(Date, "week")) %>%
+  # Group by week and region (if multiple locations)
+  group_by(region, week) %>%
+  # Compute weekly means
+  summarise(
+    PM2.5_avg = mean(`PM2.5`, na.rm = TRUE),
+    AQI_avg  = mean(AQI, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Finish this block by printing the first ten observations of the data.
+
+## Take the main data (the read-in-to-use one) as example
+head(climate_weekly, 10)
+```
+
+```
+## # A tibble: 10 × 4
+##    region            week       PM2.5_avg AQI_avg
+##    <chr>             <date>         <dbl>   <dbl>
+##  1 East Harlem North 2023-12-31      8.53    47  
+##  2 East Harlem North 2024-01-07      3.04    16.8
+##  3 East Harlem North 2024-01-14     11.1     54.7
+##  4 East Harlem North 2024-01-21     11.7     55  
+##  5 East Harlem North 2024-01-28      3.92    21.8
+##  6 East Harlem North 2024-02-04      6.03    33.7
+##  7 East Harlem North 2024-02-11      6.1     34  
+##  8 East Harlem North 2024-02-18      5.98    33  
+##  9 East Harlem North 2024-02-25      8.67    41.7
+## 10 East Harlem North 2024-03-03      3.33    18.7
+```
+
+``` r
+# Note:
+# - You may only read data from /data/processed.
+# - Files in /data/processed should already be cleaned and prepared for analysis.
+# - Beyond simple filtering of observations or generating a small number of variables,
+#   further data manipulation is not allowed. If more extensive changes are needed,
+#   update the source data instead.
+```
+
+
+``` r
+# Before conducting the analysis, report summary statistics for all variables 
+# that will be used in this notebook:
+#   - For numeric variables: mean, min, 25th percentile, median, 75th percentile, 
+#     max, standard deviation, and number of observations.
+
+# The number of observations
+nrow(climate_weekly)
+```
+
+```
+## [1] 312
+```
+
+``` r
+# For PM2.5
+summary(climate_weekly$PM2.5_avg)
+```
+
+```
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   2.017   5.312   6.950   7.377   8.989  20.133
+```
+
+``` r
+sd(climate_weekly$PM2.5_avg)
+```
+
+```
+## [1] 2.850868
+```
+
+``` r
+# For AQI
+summary(climate_weekly$AQI_avg)
+```
+
+```
+##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##   12.00   29.27   37.07   37.42   45.43   70.67
+```
+
+``` r
+sd(climate_weekly$AQI_avg)
+```
+
+```
+## [1] 11.15042
+```
+
+``` r
+#   - For categorical variables: number of observations and the counts/percentages 
+#     of the ten most frequent categories.
+# Conclude this block with the complete summary statistics.
+```
+
+## The actual analysis starts below
+
+### Ensure data availability
+
+
+``` r
+# Define your cutoff
+cutoff_date <- as.Date("2025-03-23")
+
+# Filter the data
+scm_data_filtered <- climate_weekly %>%
+  filter(week <= cutoff_date)
+
+# CHECK: Run this line to see if the counts are now identical
+table(scm_data_filtered$region)
+```
+
+```
+## 
+##        East Harlem North             East Village           Manhattanville 
+##                       65                       65                       65 
+## Washington Heights North 
+##                       65
+```
+
+### 讀進氣候控制變數
+
+這裡的氣候控制變數資料來自sensoto網站，是一個感測器的彙整資料庫。`control` 是中央公園的資料，包含降水、氣溫跟風速，在政策範圍外；`treatment` 是則位於紐約越戰紀念碑旁，包含氣溫、風速，在政策範圍內。
+
+
+``` r
+control = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/new-weather-data/measurements.csv") %>%
+  rename_with(~ case_when(
+    .x == "begin" ~ "start_date",
+    .x == "end" ~ "end_date",
+    # Use str_extract to grab the core variable name (e.g., LIQUID_PRECIPITATION)
+    # Then use str_extract again to grab the value type (e.g., _v, _lo, _hi, _c)
+    str_detect(.x, "PRECIPITATION") ~ paste0("precip_", str_extract(.x, "_v|_lo|_hi|_c$") %>% str_remove("_")),
+    str_detect(.x, "TEMPERATURE") ~ paste0("temp_", str_extract(.x, "_v|_lo|_hi|_c$") %>% str_remove("_")),
+    str_detect(.x, "WIND_SPEED_RATE") ~ paste0("wind_", str_extract(.x, "_v|_lo|_hi|_c$") %>% str_remove("_")),
+    TRUE ~ .x # Keep other names if they exist
+  ))
+
+control = cbind(control, week = scm_data_filtered$week) 
+
+treatment = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/new-weather-treatment-data/measurements.csv") %>%
+  rename_with(~ case_when(
+    .x == "begin" ~ "start_date",
+    .x == "end" ~ "end_date",
+    # Use str_extract to grab the core variable name (e.g., LIQUID_PRECIPITATION)
+    # Then use str_extract again to grab the value type (e.g., _v, _lo, _hi, _c)
+    str_detect(.x, "PRECIPITATION") ~ paste0("precip_", str_extract(.x, "_v|_lo|_hi|_c$") %>% str_remove("_")),
+    str_detect(.x, "TEMPERATURE") ~ paste0("temp_", str_extract(.x, "_v|_lo|_hi|_c$") %>% str_remove("_")),
+    str_detect(.x, "WIND_SPEED_RATE") ~ paste0("wind_", str_extract(.x, "_v|_lo|_hi|_c$") %>% str_remove("_")),
+    TRUE ~ .x # Keep other names if they exist
+  ))
+```
+
+### 初始 SCM
+
+
+``` r
+# Policy start time
+intervention_date <- as.Date("2025-01-05")
+
+# New start date based on filtered data
+start_date <- min(scm_data_filtered$week)
+
+pm25_out <- scm_data_filtered %>%
+  
+  # Initialize
+  synthetic_control(
+    outcome = PM2.5_avg,
+    unit = region,
+    time = week,
+    i_unit = "East Village", 
+    i_time = intervention_date,
+    generate_placebos = TRUE 
+  ) %>%
+  
+  # Generate Predictors
+  generate_predictor(
+    time_window = c(start_date, intervention_date - 7),
+    avg_pm25 = mean(PM2.5_avg, na.rm = TRUE)
+  ) %>%
+  
+  # Generate Weights
+  generate_weights(optimization_window = c(start_date, intervention_date - 7)) %>%
+  
+  # Generate Control
+  generate_control()
+```
+
+
+
+
+``` r
+# Plot Trends
+pm25_out %>% plot_trends() + 
+  labs(title = "Synthetic Control (Data capped at Mar 23)",
+       subtitle = "East Village vs. Synthetic Control")
+```
+
+<img src="20251128-air-quality-scm_files/figure-html/unnamed-chunk-7-1.png" width="672" />
+
+
+``` r
+# Plot 2: The Gap (Treatment Effect)
+pm25_out %>% plot_differences() +
+  labs(title = "Gap between East Village and Synthetic Control",
+       subtitle = "Negative values indicate East Village air is cleaner than expected")
+```
+
+<img src="20251128-air-quality-scm_files/figure-html/unnamed-chunk-8-1.png" width="672" />
+
+### Placebo Test
+
+將其他三個控制組地區也重複做上面的操作，如果placebo gap的趨勢跟政策範圍內的差異不同，政策效果或許有效。
+
+
+``` r
+# Plot 3: Placebo Test (Significance)
+# This checks if the effect in East Village is larger than if we 
+# randomly assigned the intervention to the other regions.
+pm25_out %>% plot_placebos() +
+  labs(title = "Placebo Test",
+       subtitle = "Is the East Village deviation unique?")
+```
+
+<img src="20251128-air-quality-scm_files/figure-html/unnamed-chunk-9-1.png" width="672" />
+
+單純用SCM的結果，可以看到結果非常雜亂，可以說政策的效果並不顯著。
+
+
+``` r
+# 1. Ensure dates are proper and create the 'week' variable
+treatment_weekly <- treatment %>%
+  select(start_date, end_date, matches("_v$")) %>%
+  mutate(
+    date = as.Date(end_date), 
+    week = floor_date(date, "week")
+  ) %>%
+  
+  # 2. Aggregate to Weekly: Mean for Temp/Wind
+  group_by(week) %>%
+  summarise(
+    temp_treat_v = mean(temp_v, na.rm = TRUE),
+    wind_treat_v = mean(wind_v, na.rm = TRUE),
+    # Note: Precipitation is missing in 'treatment' data; we must handle this later.
+    .groups = "drop"
+  ) %>%
+  
+  # Add region identifier
+  mutate(region = "East Village")
+```
+
+
+``` r
+# Re-load and clean Central Park weekly data (assuming it's available)
+control_weekly_full <- control %>%
+  select(start_date, end_date, matches("_v$")) %>%
+  mutate(
+    date = as.Date(end_date), 
+    week = floor_date(date, "week")
+  ) %>%
+  group_by(week) %>%
+  summarise(
+    temp_avg_c = mean(temp_v, na.rm = TRUE),
+    precip_total_mm = sum(precip_v, na.rm = TRUE),
+    wind_avg_m_s = mean(wind_v, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Start with filtered air quality data and join Central Park data (for all regions)
+scm_data_merged <- scm_data_filtered %>%
+  left_join(control_weekly_full, by = "week") %>%
+  
+  # Add the specific East Village data (where region matches)
+  left_join(treatment_weekly, by = c("region", "week")) %>%
+  
+  # Create final covariate columns, prioritizing East Village data where available
+  mutate(
+    temp_final = coalesce(temp_treat_v, temp_avg_c),
+    wind_final = coalesce(wind_treat_v, wind_avg_m_s),
+    precip_final = precip_total_mm # Using Central Park precip for all regions
+  ) %>%
+  select(-temp_treat_v, -wind_treat_v, -temp_avg_c, -wind_avg_m_s, -precip_total_mm) %>%
+  
+  # Impute remaining NA values for the predictors
+  group_by(region) %>%
+  fill(temp_final, wind_final, precip_final, .direction = "downup") %>%
+  ungroup()
+
+# Check: The East Village rows should have different climate values than the controls
+head(scm_data_merged)
+```
+
+```
+## # A tibble: 6 × 7
+##   region         week       PM2.5_avg AQI_avg temp_final wind_final precip_final
+##   <chr>          <date>         <dbl>   <dbl>      <dbl>      <dbl>        <dbl>
+## 1 East Harlem N… 2023-12-31      8.53    47          8.2        2          164. 
+## 2 East Harlem N… 2024-01-07      3.04    16.8        2.9        2.6         56.4
+## 3 East Harlem N… 2024-01-14     11.1     54.7        6.6        3.2        256  
+## 4 East Harlem N… 2024-01-21     11.7     55         -3.3        3.6         32.8
+## 5 East Harlem N… 2024-01-28      3.92    21.8        4.9        2.5         94  
+## 6 East Harlem N… 2024-02-04      6.03    33.7        3.5        2.8         50.8
+```
+
+### SDID (Synthetic Difference in Difference)
+
+#### 權重的建立
+
+
+``` r
+# 提取 SCM 權重 (只保留權重 > 0 的地區)
+scm_weights <- pm25_out %>%
+  tidysynth::grab_unit_weights() %>%
+  rename(region = unit) %>% # 將 unit 欄位名稱改為 region 以利合併
+  filter(weight > 0)
+
+print("提取到的控制組權重:")
+```
+
+```
+## [1] "提取到的控制組權重:"
+```
+
+``` r
+print(scm_weights)
+```
+
+```
+## # A tibble: 3 × 2
+##   region                       weight
+##   <chr>                         <dbl>
+## 1 East Harlem North        1.00      
+## 2 Manhattanville           0.0000121 
+## 3 Washington Heights North 0.00000185
+```
+
+#### 建構時間序列
+
+
+``` r
+# 1. 隔離控制組原始數據
+control_data_raw <- scm_data_merged %>% 
+    filter(region != "East Village")
+
+# 2. 結合權重並計算加權平均
+weighted_control_data <- control_data_raw %>%
+    inner_join(scm_weights, by = "region") %>%
+    group_by(week) %>%
+    summarise(
+        # 加權平均 PM2.5 (核心步驟)
+        PM2.5_avg = sum(PM2.5_avg * weight, na.rm = TRUE),
+        
+        # 氣候變數：由於控制組氣候數據相同，這裡取平均即可
+        temp_final = mean(temp_final, na.rm = TRUE), 
+        wind_final = mean(wind_final, na.rm = TRUE),
+        
+        region = "Weighted_Control",
+        .groups = "drop"
+    )
+
+# 3. 結合東村數據和加權控制組數據
+did_weighted_data <- scm_data_merged %>%
+    filter(region == "East Village") %>%
+    bind_rows(weighted_control_data) %>%
+    
+    # 4. 建立 DID 虛擬變數
+    mutate(
+        treat = as.numeric(region == "East Village"),
+        post = as.numeric(week >= as.Date("2025-01-05")),
+        did_term = treat * post # 交互作用項：政策效果
+    )
+```
+
+#### regression
+
+$$
+PM2.5_{i,t} = \alpha + \tau_{1} \cdot DID_{it} + \mu_{i} + \lambda_{t} + \epsilon_{it}
+$$
+
+
+``` r
+# Model 1: 基礎固定效應模型
+model_base_fe <- feols(
+  PM2.5_avg ~ did_term | region + week,
+  data = did_weighted_data
+)
+```
+
+$$
+PM2.5_{i,t} = \alpha + \tau_{2} \cdot DID_{it} + \gamma_{1} \cdot Temp_{it} + \gamma_{2} \cdot Wind_{it} + \mu_{i} + \lambda_{t} + \epsilon_{it} 
+$$
+
+
+
+``` r
+# 確保數據集是可用的
+# (假設 did_weighted_data 包含 did_term, temp_final, wind_final, region, week)
+
+# Model 1: 基礎固定效應模型
+model_base_fe <- feols(
+  PM2.5_avg ~ did_term | region + week,
+  data = did_weighted_data
+)
+
+# Model 2: 依據您的要求，將氣候變數作為獨立共變數納入
+
+model_simple_covariates <- feols(
+  PM2.5_avg ~ did_term + temp_final + wind_final | region + week,
+  data = did_weighted_data
+)
+
+# 輸出並排比較結果
+etable(model_base_fe, model_simple_covariates,
+       fitstat = c('n', 'r2', 'aic'),
+       dict = c(did_term = "DID (政策效果)"),
+       # 輸出時 fixest 會提示哪些變數被移除了
+       tex = FALSE
+)
+```
+
+```
+##                         model_base_fe model_simple_covari..
+## Dependent Var.:             PM2.5_avg             PM2.5_avg
+##                                                            
+## DID (政策效果) -0.4518*** (1.07e-15) -0.7222*** (3.52e-15)
+## temp_final                             0.1110*** (4.06e-16)
+## wind_final                            -0.3423*** (1.19e-15)
+## Fixed-Effects:  --------------------- ---------------------
+## region                            Yes                   Yes
+## week                              Yes                   Yes
+## _______________ _____________________ _____________________
+## S.E.: Clustered            by: region            by: region
+## Observations                      130                   130
+## R2                            0.95437               0.95567
+## AIC                            385.50                385.74
+## ---
+## Signif. codes: 0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+```
+
+
+did_term 係數為 -0.7222* (P值極小)，表示在控制了地區和時間固定效應以及氣候變數後，擁堵費政策導致 East Village 的 PM2.5 顯著下降了約 0.7222 µg/m³。
+
+temp_final 和 wind_final 係數也顯著，表明氣候衝擊確實與 PM2.5 相關。
+
+
+``` r
+library(ggplot2)
+library(dplyr)
+library(lubridate)
+
+# Define the intervention date (from your previous steps)
+intervention_date <- as.Date("2025-01-05")
+
+# 1. 繪製趨勢圖
+sdid_trends_plot <- did_weighted_data %>%
+  ggplot(aes(x = week, y = PM2.5_avg, color = region)) +
+  geom_line(linewidth = 1) +
+  # 政策介入時間線
+  geom_vline(xintercept = as.numeric(intervention_date), linetype = "dashed", color = "red") +
+  labs(
+    title = "SDID 趨勢圖：政策對 PM2.5 的影響",
+    subtitle = "東村 vs. SCM 加權控制組",
+    y = "PM2.5 平均濃度 (µg/m³)",
+    x = "週",
+    color = "地區"
+  ) +
+  scale_color_manual(values = c("East Village" = "#0072B2", "Weighted_Control" = "#D55E00")) + # 設定顏色
+  theme_minimal() +
+  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
+
+print(sdid_trends_plot)
+```
+
+<img src="20251128-air-quality-scm_files/figure-html/unnamed-chunk-16-1.png" width="672" />
+
+
+``` r
+# 1. 計算差距 (Gap = 實際值 - 反事實)
+sdid_gap_data <- did_weighted_data %>%
+  select(week, region, PM2.5_avg) %>%
+  pivot_wider(names_from = region, values_from = PM2.5_avg) %>%
+  mutate(
+    gap = `East Village` - Weighted_Control,
+    # 標記政策前後
+    post_policy = as.numeric(week >= intervention_date)
+  )
+
+# 2. 繪製差距圖
+sdid_gap_plot <- sdid_gap_data %>%
+  ggplot(aes(x = week, y = gap, color = factor(post_policy))) +
+  geom_line(color = "black", linewidth = 0.8) +
+  # 政策介入點
+  geom_vline(xintercept = as.numeric(intervention_date), linetype = "dashed", color = "red") +
+  # 參考線：差距為零
+  geom_hline(yintercept = 0, linetype = "solid", color = "gray50") +
+  # 標記政策後平均差距
+  geom_point(aes(x = week, y = gap), color = "black", size = 1.5) +
+  labs(
+    title = "SDID 政策效果：PM2.5 差距 (Gap)",
+    subtitle = "East Village 實際值 - 加權控制組值",
+    y = "差距 (µg/m³)",
+    x = "週"
+  ) +
+  scale_color_manual(values = c("0" = "#56B4E9", "1" = "#E69F00"), guide = "none") + # 顏色僅用於區分點
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+print(sdid_gap_plot)
+```
+
+<img src="20251128-air-quality-scm_files/figure-html/unnamed-chunk-17-1.png" width="672" />
