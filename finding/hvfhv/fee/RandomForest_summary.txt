@@ -1,0 +1,2 @@
+ntree	min_depth	mean_depth	max_depth
+500	21	25.412	34
