@@ -341,20 +341,20 @@ $$
 # (假設 did_weighted_data 包含 did_term, temp_final, wind_final, region, week)
 
 # Model 1: 基礎固定效應模型
-model_base_fe <- feols(
+base_sdid <- feols(
   PM2.5_avg ~ did_term | region + week,
   data = did_weighted_data
 )
 
 # Model 2: 依據您的要求，將氣候變數作為獨立共變數納入
 
-model_simple_covariates <- feols(
+sdid_covariates <- feols(
   PM2.5_avg ~ did_term + temp_final + wind_final | region + week,
   data = did_weighted_data
 )
 
 # 輸出並排比較結果
-etable(model_base_fe, model_simple_covariates,
+etable(base_sdid, sdid_covariates,
        fitstat = c('n', 'r2', 'aic'),
        dict = c(did_term = "DID (政策效果)"),
        # 輸出時 fixest 會提示哪些變數被移除了

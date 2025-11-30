@@ -11,7 +11,7 @@
 
 <meta name="author" content="Auto-converted" />
 
-<meta name="date" content="2025-11-29" />
+<meta name="date" content="2025-11-30" />
 
 <title>Statistical Analysis Template (Converted from Jupyter)</title>
 
@@ -353,7 +353,7 @@ display: none;
 <h1 class="title toc-ignore">Statistical Analysis Template (Converted
 from Jupyter)</h1>
 <h4 class="author">Auto-converted</h4>
-<h4 class="date">2025-11-29</h4>
+<h4 class="date">2025-11-30</h4>
 
 </div>
 
@@ -381,7 +381,8 @@ library(arrow)
 library(ggplot2)
 library(lubridate)
 library(tidysynth)
-library(stringr)</code></pre>
+library(stringr)
+library(fixest)</code></pre>
 <div id="讀資料" class="section level3">
 <h3>讀資料</h3>
 <pre class="r"><code># Load input data here and please finish all the data manipulation here.
@@ -676,34 +677,59 @@ did_weighted_data &lt;- scm_data_merged %&gt;%
         did_term = treat * post # 交互作用項：政策效果
     )</code></pre>
 </div>
-<div id="section" class="section level4">
-<h4></h4>
-<pre class="r"><code>library(fixest)
+<div id="regression" class="section level4">
+<h4>regression</h4>
+<p><span class="math display">\[
+PM2.5_{i,t} = \alpha + \tau_{1} \cdot DID_{it} + \mu_{i} + \lambda_{t} +
+\epsilon_{it}
+\]</span></p>
+<pre class="r"><code># Model 1: 基礎固定效應模型
+model_base_fe &lt;- feols(
+  PM2.5_avg ~ did_term | region + week,
+  data = did_weighted_data
+)</code></pre>
+<p><span class="math display">\[
+PM2.5_{i,t} = \alpha + \tau_{2} \cdot DID_{it} + \gamma_{1} \cdot
+Temp_{it} + \gamma_{2} \cdot Wind_{it} + \mu_{i} + \lambda_{t} +
+\epsilon_{it}
+\]</span></p>
+<pre class="r"><code># 確保數據集是可用的
+# (假設 did_weighted_data 包含 did_term, temp_final, wind_final, region, week)
 
-# SDID 模型: 包含地區固定效應 (region) 和時間固定效應 (week)
-# 並且控制氣候變數
-sdid_model &lt;- feols(
-  PM2.5_avg ~ did_term + 
-              temp_final + wind_final | region + week,
+# Model 1: 基礎固定效應模型
+base_sdid &lt;- feols(
+  PM2.5_avg ~ did_term | region + week,
   data = did_weighted_data
 )
 
-# 輸出詳細結果
-etable(sdid_model, fitstat = c(&#39;n&#39;, &#39;r2&#39;, &#39;aic&#39;))</code></pre>
-<pre><code>##                            sdid_model
-## Dependent Var.:             PM2.5_avg
-##                                      
-## did_term        -0.7222*** (3.52e-15)
-## temp_final       0.1110*** (4.06e-16)
-## wind_final      -0.3423*** (1.19e-15)
-## Fixed-Effects:  ---------------------
-## region                            Yes
-## week                              Yes
-## _______________ _____________________
-## S.E.: Clustered            by: region
-## Observations                      130
-## R2                            0.95567
-## AIC                            385.74
+# Model 2: 依據您的要求，將氣候變數作為獨立共變數納入
+
+sdid_covariates &lt;- feols(
+  PM2.5_avg ~ did_term + temp_final + wind_final | region + week,
+  data = did_weighted_data
+)
+
+# 輸出並排比較結果
+etable(base_sdid, sdid_covariates,
+       fitstat = c(&#39;n&#39;, &#39;r2&#39;, &#39;aic&#39;),
+       dict = c(did_term = &quot;DID (政策效果)&quot;),
+       # 輸出時 fixest 會提示哪些變數被移除了
+       tex = FALSE
+)</code></pre>
+<pre><code>##                             base_sdid       sdid_covariates
+## Dependent Var.:             PM2.5_avg             PM2.5_avg
+##                                                            
+## DID (政策效果) -0.4518*** (1.07e-15) -0.7222*** (3.52e-15)
+## temp_final                             0.1110*** (4.06e-16)
+## wind_final                            -0.3423*** (1.19e-15)
+## Fixed-Effects:  --------------------- ---------------------
+## region                            Yes                   Yes
+## week                              Yes                   Yes
+## _______________ _____________________ _____________________
+## S.E.: Clustered            by: region            by: region
+## Observations                      130                   130
+## R2                            0.95437               0.95567
+## AIC                            385.50                385.74
 ## ---
 ## Signif. codes: 0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1</code></pre>
 <p>did_term 係數為 -0.7222*
