@@ -1,0 +1,382 @@
+---
+title: "HVFHV Volume Counterfactual via Random Forest"
+author: "Tung-Yen Wu"
+date: "2025-11-28"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width  = 7,
+  fig.height = 4
+)
+
+```
+
+
+# Background
+
+
+- **Author**: Tung-Yen Wu
+- **Created At**: 2025-11-28
+- **Research Motivation and Context**:
+The congestion fee policy in the CBD also charges riders an additional 1.5 dollars per ride if they take a high-volume for-hire vehicle (HVFHV) into the CBD. We want to examine whether this increase in price reduces the demand for HVFHV trips in the CBD.
+- **Challenges and Solutions**:
+The policy took effect on 2025/01/05. The simplest way to evaluate changes in demand would be to plot the average daily ridership within the CBD (i.e., a regression discontinuity in time). However, total ridership is highly volatile and confounded by many external factors, making it difficult to isolate the policy effect.
+To address this, we propose using a random forest model trained on pre-policy data to synthesize counterfactual hourly ridership volumes after 2025/01/05, using ridership patterns outside the CBD as predictors. This allows us to estimate what HVFHV demand would have been in the absence of the policy. Because the ridership patterns outside the CBD are high-dimensional, we also use principal component analysis (PCA) to extract a set of informative and tractable features to use as predictors.
+- **Main Findings and Takeaways**:
+The policy does not appear to reduce HVFHV ridership volume within the CBD, suggesting that the demand for HVFHV trips into the CBD is relatively inelastic.
+- **Future Direction**:
+Examine whether the policy affects HVFHV pricing mechanisms.
+
+
+- **Disclaimer**:
+This R Markdown file is not a self-contained, fully reproducible workflow.
+Before knitting this document, you must first run the script hvfhv_precompute.R in the same folder. That script performs all heavy data processing and model training, and saves the results as .rds files, which are subsequently loaded and used in this presentation.
+The reason this document is not self-contained is that the full pipeline operates on more than 10 GB of raw data and processes over 300 million ridership records, which makes the computation infeasible to run within the knitting process.
+
+
+# 安裝套件和設定工作目錄
+
+
+```{r}
+required_pkgs <- c(
+  "arrow", "dplyr", "lubridate", "ggplot2", "tidyr",
+  "randomForest", "irlba", "Matrix", "broom", "scales"
+)
+
+for (pkg in required_pkgs) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+}
+
+library(arrow)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(randomForest)
+library(irlba)
+library(Matrix)
+library(broom)
+library(scales)
+```
+
+
+```{r}
+base_dir     <- "C:/Users/hp/Desktop/ECON5166-final_project"
+analysis_dir <- file.path(base_dir, "hvfhv_volume")
+data_dir     <- file.path(base_dir, "data")
+rds_dir      <- file.path(analysis_dir, "rds")
+out_dir      <- file.path(analysis_dir, "Volume/random_forest_hourly")
+
+dir.create(analysis_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(rds_dir,      recursive = TRUE, showWarnings = FALSE)
+dir.create(out_dir,      recursive = TRUE, showWarnings = FALSE)
+
+getwd()
+```
+
+
+# 讀取已分析之資料
+
+以下步驟讀取了 treated LocationID (受到壅塞費影響的街區) 清單，以及所有用於預覽的 HVFHV 清單。
+
+```{r}
+treated_file <- file.path(
+  base_dir,
+  "2025 Congestion Pricing – Affected TLC LocationID List.txt"
+)
+treated_ids  <- scan(treated_file, what = integer(), quiet = TRUE)
+
+length(treated_ids)
+head(treated_ids)
+
+months_2024 <- sprintf("2024-%02d", 1:12)
+months_2025 <- sprintf("2025-%02d", 1:6)
+months_all  <- c(months_2024, months_2025)
+
+data_files  <- file.path(
+  data_dir,
+  paste0("fhvhv_tripdata_", months_all, ".parquet")
+)
+
+data_files
+```
+
+輸入 2024-01 ~ 2025-06 的所有資料進行以下三步驟處理:
+1. 資料合併、計算每小時、每個街區組合的 HVFHV 車數。把資料轉成稀疏矩陣，以便進行超大運算量分析。
+2. 對每小時 CBD 以外的所有 HVFHV 車數資料進行 pca ， 他們將是 Random forest 重要的特徵輸入。
+3. 進行 Random forest 訓練: 用每小時 CBD 以外的所有 HVFHV 車數資料的 PC1 至 PC10，和該小時本身的時間時間、星期和日期資訊作為輸入特徵，訓練  Random forest 預測模型。
+
+以下這段實際是在 hvfhv_precompute.R 中執行，
+此處 Rmd 只負責展示演算法，避免在 knit 時重新跑 10GB+ 的原始資料。
+
+```{r, eval = FALSE}
+# Cohort: Weekday hourly HVFHV trips from 2024/01–2025/06
+# --------------------------------------------------------
+
+### 1. Data ingestion & transformation into sparse matrix
+# - Read treated DOLocationID list.
+# - Load raw hvfhv parquet files (2024/01–2024/12 and 2025/01–2025/06).
+# - Convert trip-level data into weekday-only hourly aggregates.
+# - Construct hourly target y = number of treated-location dropoffs.
+# - Build hourly time_info (date, hour, dow, train indicator).
+# - Extract non-treated (PU, DO) flow counts per hour.
+# - Identify feature set using flows observed in training months (2024/04–2024/12).
+# - Map all (PU, DO) flow counts into a sparse matrix X_all_sparse (hour × feature).
+
+### 2. PCA dimension reduction (training set = 2024/04–2024/12)
+# - Select training rows (is_train == TRUE).
+# - Run fast PCA (irlba::prcomp_irlba) on X_train_sparse.
+# - Keep first K = 10 PCs.
+# - Compute explained variance and cumulative variance.
+# - Predict PC scores for all hours and merge with time_info + y.
+
+### 3. Random Forest modeling (training set = 2024/04–2024/12)
+# - Build RF input matrix X_all = PCs + time factors (hour, day, month, dow).
+# - Fit randomForest model (ntree = 500) on training hours.
+# - Predict y_hat for training period and full cohort (2024/01–2025/06).
+# - Compute R² (train, overall, daily-mean).
+# - Compute tree depth summaries and variable importance.
+# - Save all intermediate results to .rds for downstream Rmd use.
+```
+
+
+從 .rds 載入預先計算好的資料，並預覽資料格式。
+
+```{r}
+hourly_y   <- readRDS(file.path(rds_dir, "hourly_y.rds"))
+time_info  <- readRDS(file.path(rds_dir, "time_info.rds"))
+pc_var_df  <- readRDS(file.path(rds_dir, "pc_var_df.rds"))
+rf_summary <- readRDS(file.path(rds_dir, "rf_summary.rds"))
+var_imp    <- readRDS(file.path(rds_dir, "var_imp.rds"))
+pred_df    <- readRDS(file.path(rds_dir, "pred_df.rds"))
+daily_avg  <- readRDS(file.path(rds_dir, "daily_avg.rds"))
+rf_R2      <- readRDS(file.path(rds_dir, "rf_R2.rds"))
+
+R2_train <- rf_R2$R2_train
+R2_all   <- rf_R2$R2_all
+R2_day   <- rf_R2$R2_day
+
+dim(hourly_y)
+dim(time_info)
+head(pred_df)
+```
+
+
+以上載入的資料“pred_df”，已經紀錄了2024-01~2025-06 這段期間，每小時進入 CBD 的 HVFHV 總量：y 是實際的總量，hat y 是用 random forest--以該小時周遭地區的車流量--預估的HVFHV 總量。
+
+模型是以 2024-04~2024-12 作為訓練，並預測 2024-01~2025-06  整段時間。因為模型訓練的時間還沒有擁塞費，所以估計出來的 hat y，可作為 2025 政策實施後的「和成控制組」使用。
+
+模型之所以沒有把 2024-01~2024-03 作為訓練集，是希望可以多預留一個外部的預測集，確定y 和 hat y 是來自政策效果或是模型預測誤差
+
+# 結果分析
+
+## PCA 穩健程度
+
+```{r}
+pc_var_df %>%
+  knitr::kable(
+    digits = 3,
+    caption = "前 10 個主成分的變異解釋比例與累積變異解釋比例"
+  )
+
+K <- nrow(pc_var_df)
+
+p_pc <- ggplot(pc_var_df, aes(x = PC, y = CumVarExpl)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = seq_len(K)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Cumulative Variance Explained by Principal Components",
+    x = "Principal Component (PC)",
+    y = "Cumulative Variance Explained"
+  ) +
+  theme(
+    plot.title = element_text(size = 10)
+  )
+
+p_pc
+
+```
+
+## Random forest 模型參數
+
+```{r}
+rf_summary %>%
+  knitr::kable(
+    digits = 3,
+    caption = "Random Forest 樹深度摘要"
+  )
+head(var_imp) %>%
+  knitr::kable(
+    digits = 3,
+    caption = "Random Forest 變數重要度（前幾個變數）"
+  )
+
+```
+
+## 模型預測評估
+
+小時級 R² 評估
+
+```{r}
+data.frame(
+  Metric = c("Hourly R^2 (train 2024/04–12)",
+             "Hourly R^2 (overall 2024/01–2025/06)",
+             "Daily mean R^2 (05:00–21:00, 2024/01–2025/06)"),
+  Value  = c(R2_train, R2_all, R2_day)
+) %>%
+  knitr::kable(digits = 3, caption = "模型 R² 評估（小時級與日平均）")
+
+write.csv(
+  pred_df,
+  file = file.path(out_dir, "hourly_predictions_from_rds.csv"),
+  row.names = FALSE
+)
+```
+
+週平均流量與 R² ，繪製實際 vs 模型預測的週平均時間序列圖
+
+```{r}
+# 1. 計算 weekly mean + SE + 95% CI
+weekly_ci <- pred_df %>%
+  dplyr::filter(date >= as.Date("2024-07-01"),
+                date <= as.Date("2025-06-30")) %>%
+  dplyr::mutate(
+    week_start = lubridate::floor_date(date, unit = "week", week_start = 1)
+  ) %>%
+  dplyr::group_by(week_start) %>%
+  dplyr::summarise(
+    n         = n(),
+    y_mean    = mean(y),
+    y_sd      = sd(y),
+    yhat_mean = mean(y_hat),
+    yhat_sd   = sd(y_hat),
+    .groups   = "drop"
+  ) %>%
+  dplyr::mutate(
+    # Standard errors
+    y_se       = y_sd / sqrt(n),
+    yhat_se    = yhat_sd / sqrt(n),
+
+    # 95% CI
+    y_lower    = y_mean - 1.96 * y_se,
+    y_upper    = y_mean + 1.96 * y_se,
+
+    yhat_lower = yhat_mean - 1.96 * yhat_se,
+    yhat_upper = yhat_mean + 1.96 * yhat_se
+  )
+
+weekly_long <- weekly_ci %>%
+  transmute(
+    week_start,
+    actual_mean     = y_mean,
+    actual_lower    = y_lower,
+    actual_upper    = y_upper,
+    predicted_mean  = yhat_mean,
+    predicted_lower = yhat_lower,
+    predicted_upper = yhat_upper
+  ) %>%
+  tidyr::pivot_longer(
+    cols = -week_start,
+    names_to = c("series", "stat"),
+    names_sep = "_",
+    values_to = "value"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from  = stat,
+    values_from = value
+  ) %>%
+  dplyr::mutate(
+    series = factor(series,
+                    levels = c("actual", "predicted"),
+                    labels = c("Actual", "Predicted"))
+  )
+
+cutoff_date <- as.Date("2025-01-05")  # first week of Jan 2025
+
+p_weekly_ci <- ggplot(weekly_long,
+                      aes(x = week_start, y = mean,
+                          color = series, fill = series)) +
+  geom_line(linewidth = 0.9) +
+  geom_ribbon(aes(ymin = lower, ymax = upper),
+              alpha = 0.15, color = NA) +
+  geom_vline(xintercept = cutoff_date,
+             color = "blue", linetype = "dashed", linewidth = 0.8) +
+  labs(
+    title = "Weekly Mean Actual vs Predicted with 95% CI (2024-07 to 2025-06)",
+    subtitle = "Vertical blue line indicates the first week of January 2025 (cutoff)",
+    x = "Week start date",
+    y = "Hourly trips (weekly mean)",
+    color = "Series",
+    fill  = "Series"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 10),
+    axis.text.x   = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+p_weekly_ci
+
+
+```
+
+
+## DID 估計政策效果
+
+首先估計最基本的差異中的差異（Difference-in-Differences, DID）模型，以衡量政策對 treated 區域交通量的影響。
+
+模型一（簡單 DID）：
+
+$gap_t = \alpha + \delta \cdot post_t + \varepsilon_t$
+
+其中$ gap_t = y_t - \hat{y}_t $ 作為政策 DID 的 outcome。這是受到 Abadie et al. (2007) 合成控制法的啟發；不同之處在於本分析使用預測力更強的 Random Forest 來合成 counterfactual。
+
+```{r}
+did_df <- pred_df %>%
+  filter(
+    date >= as.Date("2024-04-01") &
+    date <= as.Date("2025-06-30")
+  ) %>%
+  mutate(
+    post = ifelse(date >= as.Date("2025-01-05"), 1, 0),
+    gap  = y - y_hat,
+    month        = lubridate::month(date),
+    weekday      = lubridate::wday(date, week_start = 1),
+    day_of_month = lubridate::day(date)
+  )
+
+head(did_df) %>% 
+  knitr::kable(caption = "三個月 DID 分析資料（前幾筆）")
+```
+
+簡單 DID：gap_t = α + δ post_t + ε_t
+
+```{r}
+did_simple <- lm(gap ~ post, data = did_df)
+summary(did_simple)
+```
+
+由以上趨勢圖和DID分析結果可以做結: 政策沒有使得進入 CBD 的 HVFHV 數量減少，即使該政策明文規定， HVFHV 的乘客會直接被收取 1.5 美金的壅塞費壅塞費。這或反映了需要乘車到 CBD 內的消費者需求彈性很差; 沒辦法因為漲價而減少消費量。而這也和我們 CBD 內人流的想像一致，大部分是觀光客和商務人士，這些人本身無論如何，都得在必要時進到 CBD。
+  
+
+  
+
+  
+
+  
+
