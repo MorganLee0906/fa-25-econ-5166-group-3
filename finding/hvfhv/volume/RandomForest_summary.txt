@@ -1,2 +1,0 @@
-ntree	min_depth	mean_depth	max_depth
-500	22	25.82	35
