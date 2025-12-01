@@ -1,4 +1,0 @@
-R_Markdown.RMD; R_Markdown.HTML is the Markdown file.
-hvfhv_precompute.R is the algorithm used to conduct heavy computation (Random forest and principle component analysis).
-folder "rds" contains the output data from hvfhv_precompute.R .
-folder "Volume" contains informative outout from hvfhv_precompute.R . 
