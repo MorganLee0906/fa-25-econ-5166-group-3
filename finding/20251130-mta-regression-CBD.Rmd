@@ -94,7 +94,8 @@ growth_rate <- summary_stat %>%
     growth_rate = (Year_2025 - Year_2024) / Year_2024,
     diff_abs = Year_2025 - Year_2024
   ) %>%
-  arrange(desc(growth_rate))
+  arrange(desc(growth_rate)) %>%
+  select(-diff_abs)
 
 growth_rate
 ```
