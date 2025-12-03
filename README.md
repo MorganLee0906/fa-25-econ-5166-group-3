@@ -39,8 +39,8 @@ After the poster presentation, please highlight each member's key contribution t
 - `<Contribution >` [see commit](url)
 
 **`吳東彥`**'s contribution
-- `<清理 hvfhv 資料; 將其整理成更有效率的存檔格式以便後續分析; 讓處理的 Code 符合交付規範>` [see commit; .rmd]([url](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66)) [see commit; .html]([url](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66))
-- `<Contribution >` [see commit]([url](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e))
+- `清理 hvfhv 資料; 將其整理成更有效率的存檔格式以便後續分析; 讓處理的 Code 符合交付規範` [see commit; .rmd](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66))[see commit; .html](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66)
+- `<Contribution >` [see commit](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e)
 
 
 
