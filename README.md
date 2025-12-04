@@ -40,7 +40,6 @@ After the poster presentation, please highlight each member's key contribution t
 
 **`吳東彥`**'s contribution
 - `清理 hvfhv 資料; 將其整理成更有效率的存檔格式以便後續分析; 讓處理的 Code 符合交付規範` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66);[see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e)
-- `<Contribution >` [see commit](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e)
-
+- `<對 hvfhv 的地區別每小時乘車資料做 principal component analysis (PCA); 將數據打包成可以做 Random Forest (RF) 預測模型的格式; 讓處理的 Code 符合交付規範 >` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/d788d6f8cc9981f919a25146fc40473caad9e32f);[see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/6ad2e4c1ab4ce6162e7e14042a4aef9a5c0ac936)
 
 
