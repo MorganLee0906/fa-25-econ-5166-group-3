@@ -1,0 +1,394 @@
+---
+title: "Statistical Analysis: policy effects on HVFHV"
+author: "Tung-Yen Wu"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+
+- **Author**: Tung-Yen Wu
+- **Created At**: 2025-12-06
+- **Research Motivation and Context**:
+The congestion fee policy in the CBD also charges riders an additional 1.5 dollars per ride if they take a high-volume for-hire vehicle (HVFHV) into the CBD. We want to examine whether this increase in price reduces the demand for HVFHV trips in the CBD.
+- **Challenges and Solutions**:
+The policy took effect on 2025/01/05. The simplest way to evaluate changes in demand would be to plot the average daily ridership within the CBD (i.e., a regression discontinuity in time). However, total ridership/tips is highly volatile and confounded by many external factors, making it difficult to isolate the policy effect.
+To address this, we propose using a random forest　(RF) model trained on pre-policy data to synthesize counterfactual hourly ridership volumes/tips after 2025/01/05, using ridership patterns outside the CBD as predictors. This allows us to estimate what HVFHV demand would have been in the absence of the policy. Because the ridership patterns outside the CBD are high-dimensional, we also use principal component analysis (PCA) to extract a set of informative and tractable features to use as predictors.　The algorithm of PCA and RF is in other .rmd files to make sure the work is obey to “交付規範”.
+- **Main Findings and Takeaways**:
+The policy does not appear to reduce HVFHV ridership volume within the CBD, suggesting that the demand for HVFHV trips into the CBD is relatively inelastic.　The policy-induced tax is indirectly shifted onto drivers, reflected in a statistically significant decline in tipping behavior.
+- **Future Direction**:　No.
+
+
+
+```{r}
+# Load packages here
+required_pkgs <- c(
+  "dplyr", "lubridate", "ggplot2", "tidyr",
+  "readr", "broom", "knitr"
+)
+
+for (pkg in required_pkgs) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
+
+```
+
+```{r}
+# Load input data here and please finish all the data manipulation here.
+# Finish this block by printing the first ten observations of the data.
+## 專案與資料路徑
+base_dir      <- "C:/Users/hp/Desktop/fa-25-econ-5166-group-3"
+processed_dir <- file.path(base_dir, "data", "processed")
+fig_dir       <- file.path(processed_dir, "DID_fig")
+dir.create(fig_dir, showWarnings = FALSE, recursive = TRUE)
+
+## 讀 RF 輸出的預測結果
+pred_df_volume <- readRDS(file.path(processed_dir, "pred_df_volume_rf.rds"))
+pred_df_tips   <- readRDS(file.path(processed_dir, "pred_df_tips_rf.rds"))
+
+cat("pred_df_volume dim:", paste(dim(pred_df_volume), collapse = " x "), "\n")
+cat("pred_df_tips   dim:", paste(dim(pred_df_tips),   collapse = " x "), "\n")
+
+## 檢查一下 volume 資料
+head(pred_df_volume, 5) %>%
+  knitr::kable(caption = "Volume RF 預測結果（前 5 筆）")
+```
+
+```{r}
+# Before conducting the analysis, report summary statistics for all variables 
+## R^2 / MSE 小工具
+calc_R2 <- function(y, y_hat) {
+  if (length(y) != length(y_hat) || length(y) == 0L) return(NA_real_)
+  if (length(unique(y)) <= 1L) return(NA_real_)
+  sse <- sum((y - y_hat)^2)
+  sst <- sum((y - mean(y))^2)
+  1 - sse / sst
+}
+
+calc_MSE <- function(y, y_hat) {
+  if (length(y) != length(y_hat) || length(y) == 0L) return(NA_real_)
+  mean((y - y_hat)^2)
+}
+
+cutoff_date <- as.Date("2025-01-05")  ## 第一個政策週（可視為 post 開始）
+```
+
+# Volume – Weekly Mean
+
+```{r}
+
+## 對 pred_df_volume 改名成 pred_df 比較通用
+pred_df <- pred_df_volume
+
+## 確保 date 是 Date 類型
+stopifnot(inherits(pred_df$date, "Date"))
+
+## 1. 計算週平均與標準誤 / 95% CI（2024-07-01 ~ 2025-06-30）
+weekly_ci <- pred_df %>%
+  dplyr::filter(
+    date >= as.Date("2024-07-01"),
+    date <= as.Date("2025-06-30")
+  ) %>%
+  dplyr::mutate(
+    week_start = lubridate::floor_date(date, unit = "week", week_start = 1)
+  ) %>%
+  dplyr::group_by(week_start) %>%
+  dplyr::summarise(
+    n         = dplyr::n(),
+    y_mean    = mean(y),
+    y_sd      = sd(y),
+    yhat_mean = mean(y_hat),
+    yhat_sd   = sd(y_hat),
+    .groups   = "drop"
+  ) %>%
+  dplyr::mutate(
+    ## Standard errors
+    y_se       = y_sd / sqrt(n),
+    yhat_se    = yhat_sd / sqrt(n),
+
+    ## 95% CI
+    y_lower    = y_mean - 1.96 * y_se,
+    y_upper    = y_mean + 1.96 * y_se,
+
+    yhat_lower = yhat_mean - 1.96 * yhat_se,
+    yhat_upper = yhat_mean + 1.96 * yhat_se
+  )
+
+head(weekly_ci, 5) %>%
+  knitr::kable(caption = "Volume：週平均流量與信賴區間（前 5 筆）")
+
+```
+
+```{r}
+## 整理成 long format，方便 ggplot 畫 Actual vs Predicted
+weekly_long <- weekly_ci %>%
+  dplyr::transmute(
+    week_start,
+    actual_mean     = y_mean,
+    actual_lower    = y_lower,
+    actual_upper    = y_upper,
+    predicted_mean  = yhat_mean,
+    predicted_lower = yhat_lower,
+    predicted_upper = yhat_upper
+  ) %>%
+  tidyr::pivot_longer(
+    cols = -week_start,
+    names_to = c("series", "stat"),
+    names_sep = "_",
+    values_to = "value"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from  = stat,
+    values_from = value
+  ) %>%
+  dplyr::mutate(
+    series = factor(
+      series,
+      levels = c("actual", "predicted"),
+      labels = c("Actual", "Predicted")
+    )
+  )
+
+head(weekly_long, 5) %>%
+  knitr::kable(caption = "Volume：週平均 long format（前 5 筆）")
+```
+
+
+```{r}
+p_weekly_ci <- ggplot(weekly_long,
+                      aes(x = week_start, y = mean,
+                          color = series, fill = series)) +
+  geom_line(linewidth = 0.9) +
+  geom_ribbon(aes(ymin = lower, ymax = upper),
+              alpha = 0.15, color = NA) +
+  geom_vline(xintercept = cutoff_date,
+             color = "blue", linetype = "dashed", linewidth = 0.8) +
+  labs(
+    title    = "Volume – Weekly Mean Actual vs Predicted (2024-07 to 2025-06)",
+    subtitle = "Vertical blue line = first policy week (2025-01-05)",
+    x        = "Week start date",
+    y        = "Hourly trips (weekly mean)",
+    color    = "Series",
+    fill     = "Series"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 10),
+    axis.text.x   = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+print(p_weekly_ci)
+
+ggplot2::ggsave(
+  filename = file.path(fig_dir, "volume_weekly_mean_actual_vs_pred.png"),
+  plot     = p_weekly_ci,
+  width    = 8,
+  height   = 4.5,
+  dpi      = 300
+)
+```
+
+# Volume – DID 估計政策效果（gap = y - ŷ）
+
+
+首先估計最基本的差異中的差異（Difference-in-Differences, DID）模型，以衡量政策對 treated 區域交通量的影響。
+
+模型（簡單 DID）：
+
+$gap_t = \alpha + \delta \cdot post_t + \varepsilon_t$
+
+其中$ gap_t = y_t - \hat{y}_t $ 作為政策 DID 的 outcome。這是受到 Abadie et al. (2007) 合成控制法的啟發；不同之處在於本分析使用預測力更強的 Random Forest 來合成 counterfactual。
+
+```{r}
+did_df_vol <- pred_df %>%
+  dplyr::filter(
+    date >= as.Date("2024-04-01"),
+    date <= as.Date("2025-09-30")
+  ) %>%
+  dplyr::mutate(
+    post = ifelse(date >= cutoff_date, 1L, 0L),
+    gap  = y - y_hat,
+    month        = lubridate::month(date),
+    weekday      = lubridate::wday(date, week_start = 1),
+    day_of_month = lubridate::day(date)
+  )
+
+head(did_df_vol) %>%
+  knitr::kable(caption = "Volume DID 資料（前幾筆）")
+```
+
+```{r}
+did_simple_vol <- lm(gap ~ post, data = did_df_vol)
+summary(did_simple_vol)
+```
+
+```{r}
+broom::tidy(did_simple_vol) %>%
+  knitr::kable(digits = 4,
+               caption = "Volume DID – 簡單模型估計結果（gap ~ post）")
+```
+
+
+由以上趨勢圖和DID分析結果可以做結: 政策沒有使得進入 CBD 的 HVFHV 數量減少，即使該政策明文規定， HVFHV 的乘客會直接被收取 1.5 美金的壅塞費壅塞費。這或反映了需要乘車到 CBD 內的消費者需求彈性很差; 沒辦法因為漲價而減少消費量。而這也和我們 CBD 內人流的想像一致，大部分是觀光客和商務人士，這些人本身無論如何，都得在必要時進到 CBD。
+  
+#  Tips – Weekly Mean
+
+```{r}
+pred_df_t <- pred_df_tips %>%
+  dplyr::left_join(
+    pred_df_volume %>%
+      dplyr::select(datetime_hour, vol_y = y),  # 真實 volume
+    by = "datetime_hour"
+  ) %>%
+  dplyr::mutate(
+    ## 每趟平均小費（真實 volume 做分母）
+    mean_tip     = dplyr::if_else(vol_y > 0, y     / vol_y, NA_real_),
+    mean_tip_hat = dplyr::if_else(vol_y > 0, y_hat / vol_y, NA_real_)
+  )
+
+
+stopifnot(inherits(pred_df_t$date, "Date"))
+
+weekly_ci_tips <- pred_df_t %>%
+  dplyr::filter(
+    date >= as.Date("2024-07-01"),
+    date <= as.Date("2025-06-30")
+  ) %>%
+  dplyr::mutate(
+    week_start = lubridate::floor_date(date, unit = "week", week_start = 1)
+  ) %>%
+  dplyr::group_by(week_start) %>%
+  dplyr::summarise(
+    n         = dplyr::n(),
+    y_mean    = mean(mean_tip,     na.rm = TRUE),   # 每趟平均小費（實際）
+    y_sd      = sd(mean_tip,       na.rm = TRUE),
+    yhat_mean = mean(mean_tip_hat, na.rm = TRUE),   # 每趟平均小費（預測）
+    yhat_sd   = sd(mean_tip_hat,   na.rm = TRUE),
+    .groups   = "drop"
+  ) %>%
+  dplyr::mutate(
+    y_se       = y_sd / sqrt(n),
+    yhat_se    = yhat_sd / sqrt(n),
+    y_lower    = y_mean    - 1.96 * y_se,
+    y_upper    = y_mean    + 1.96 * y_se,
+    yhat_lower = yhat_mean - 1.96 * yhat_se,
+    yhat_upper = yhat_mean + 1.96 * yhat_se
+  )
+
+weekly_long_tips <- weekly_ci_tips %>%
+  dplyr::transmute(
+    week_start,
+    actual_mean     = y_mean,
+    actual_lower    = y_lower,
+    actual_upper    = y_upper,
+    predicted_mean  = yhat_mean,
+    predicted_lower = yhat_lower,
+    predicted_upper = yhat_upper
+  ) %>%
+  tidyr::pivot_longer(
+    cols = -week_start,
+    names_to = c("series", "stat"),
+    names_sep = "_",
+    values_to = "value"
+  ) %>%
+  tidyr::pivot_wider(
+    names_from  = stat,
+    values_from = value
+  ) %>%
+  dplyr::mutate(
+    series = factor(
+      series,
+      levels = c("actual", "predicted"),
+      labels = c("Actual", "Predicted")
+    )
+  )
+```
+
+```{r}
+p_weekly_tips <- ggplot(weekly_long_tips,
+                        aes(x = week_start, y = mean,
+                            color = series, fill = series)) +
+  geom_line(linewidth = 0.9) +
+  geom_ribbon(aes(ymin = lower, ymax = upper),
+              alpha = 0.15, color = NA) +
+  geom_vline(xintercept = cutoff_date,
+             color = "blue", linetype = "dashed", linewidth = 0.8) +
+  labs(
+    title    = "Tips – Weekly Mean Actual vs Predicted (2024-07 to 2025-06)",
+    subtitle = "Vertical blue line = first policy week (2025-01-05)",
+    x        = "Week start date",
+    y        = "Average tip per treated trip  (weekly mean)",
+    color    = "Series",
+    fill     = "Series"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 10),
+    axis.text.x   = element_text(angle = 45, hjust = 1),
+    legend.position = "right"
+  )
+
+print(p_weekly_tips)
+
+ggplot2::ggsave(
+  filename = file.path(fig_dir, "tips_weekly_mean_actual_vs_pred.png"),
+  plot     = p_weekly_tips,
+  width    = 8,
+  height   = 4.5,
+  dpi      = 300
+)
+```
+由上圖可以看出，政策後的三個月內三個月內，「CBD」地區給予司機的小費明顯減少。由下一個 chunk 的估計更指出，平均每趟減少了將近 0.1 元（從原先平均應該大約有1.4 元的小費）。
+
+該政策雖規定課徵的 1.5 元壅塞費要施加到消費者上，此處明顯看到乘客透過「小費」這個可更動支出，轉移政策稅金到「司機」身上；這是非常驚訝地發現。另外，轉嫁的現象雖然明顯，但比例不高（0.1元/1.4元），也顯現消費者的彈性確實較低，和前一小節「市場成交量」沒有受到政策影響相互呼應。
+
+至於為何政策實施的三個月後，小費就回歸正常水平，此處推測是因為股市和經濟帶來的「所得效果」。美股其實自從去年年中就開始沒有亮眼表現，直到經年三月後，才開始回彈、上揚。
+
+# Tips：DID（gap_t = y_t - ŷ_t）
+
+```{r}
+# 由上圖來看，政策後前三月的預測小費和實際小費有很強的落差，所以此處只估計這三個月的效果
+did_df_tips <- pred_df_t %>%
+  dplyr::filter(
+    date >= as.Date("2024-04-01"),
+    date <= as.Date("2025-03-30")
+  ) %>%
+  dplyr::mutate(
+    post = ifelse(date >= cutoff_date, 1L, 0L),
+    gap  = mean_tip - mean_tip_hat,   # 每趟平均小費的 gap
+    month        = lubridate::month(date),
+    weekday      = lubridate::wday(date, week_start = 1),
+    day_of_month = lubridate::day(date)
+  )
+
+did_simple_tips <- lm(gap ~ post, data = did_df_tips)
+summary(did_simple_tips)
+
+did_simple_tips <- lm(gap ~ post, data = did_df_tips)
+
+did_out <- broom::tidy(did_simple_tips) %>%
+  dplyr::mutate(
+    ## 新增一欄字串版 p-value，顯示到很小（例如 eps = 1e-16）
+    p_value_str = format.pval(p.value, digits = 6, eps = 1e-16)
+  )
+
+did_out %>%
+  dplyr::select(term, estimate, std.error, statistic, p_value_str) %>%
+  knitr::kable(
+    digits  = 6,  # 這裡控制估計值、小數多少位
+    caption = "Tips DID – gap = Δ(average tip per trip)（含高精度 p-value）"
+  )
+```
+
+
+
