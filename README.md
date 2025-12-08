@@ -45,4 +45,7 @@ After the poster presentation, please highlight each member's key contribution t
 - `用前述步驟預測的總車流量和平均小費作為合成控制組，以圖表和 DiD 估計政策效果。發現總車流量沒有因政策的稅金而改變，代表 hvfhv 乘客的需求彈性很低。但發現乘客透過減少小費的形式，轉嫁一部分的稅金給司機(雍塞費每趟 1.5 美金，每趟乘客平均給司機的小費少了約 0.1 美金)。`[see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3cf8d6433fb04c2a453dc0c4d51203fcb6d8b5f7); [see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/a6c9c5007d5f2d7bec2414aff8800ea31b041e5f)
 - `以上步驟的的統計概念，請參考連結附圖。` [see commit(.jepg)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/6e5a0f5edf4771746e863939e33d07698127badb)
 
-
+**`李承祐`**'s contribution
+- `Clean MTA data` [1a007bc](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/1a007bcba6f43d3e641dee6795d4a7e00faf4fce)
+- `Merge station information into the dataset (to check whether the station in the CBD)` [3343783](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3343783322792a7118567ed80a7383e02b657309)
+- `Analyze MTA data` [3343783](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3343783322792a7118567ed80a7383e02b657309) and [ba84974](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ba84974803c2652f7280e25618e3fedc7dea799a)
