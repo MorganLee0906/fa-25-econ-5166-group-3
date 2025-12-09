@@ -34,7 +34,7 @@ the folder `notebook-templates` contains the jupyter notebooks and R markdown ex
 ## Each Member's Key Contribution
 After the poster presentation, please highlight each member's key contribution to the project. Please include the link to specific commits (e.g., a page like [this](https://github.com/yu-chang-chen/FA25-ECON-5166-Group-Project-Template/commit/29e276672f667af5cd7b198871033748fc3ec3ee)) for my reference.
 
-**`<NAME>`**'s contribution
+**`<姚如謙>`**'s contribution
 - `<Contribution >` [see commit](url)
 - `<Contribution >` [see commit](url)
 
