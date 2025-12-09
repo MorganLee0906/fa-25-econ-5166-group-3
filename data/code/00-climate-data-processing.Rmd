@@ -64,24 +64,6 @@ nyc_shp = st_read("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_map/
 ny_air = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/ad_viz_plotval_data.csv")
 ```
 
-```{r, eval=FALSE}
-#pre_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhv_tripdata_2024-07.parquet")
-
-#pre_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/green_tripdata_2024-07.parquet")
-
-#pre_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/yellow_tripdata_2024-07.parquet")
-
-#pre_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2024/fhvhv_tripdata_2024-07.parquet")
-
-#post_fhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhv_tripdata_2025-07.parquet")
-
-#post_yellow = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/yellow_tripdata_2025-07.parquet")
-
-#post_green = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/green_tripdata_2025-07.parquet")
-
-#post_fhvhv = read_parquet("C:/114-1_Autumn/Data_science_and_social_inquiry/data/nyc_july2025/fhvhv_tripdata_2025-07.parquet")
-```
-
 # Showing Manhattan shp
 
 ```{r}
