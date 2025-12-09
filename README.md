@@ -55,3 +55,7 @@ After the poster presentation, please highlight each member's key contribution t
 - `Clean MTA data` [1a007bc](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/1a007bcba6f43d3e641dee6795d4a7e00faf4fce)
 - `Merge station information into the dataset (to check whether the station in the CBD)` [3343783](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3343783322792a7118567ed80a7383e02b657309)
 - `Analyze MTA data` [3343783](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3343783322792a7118567ed80a7383e02b657309) and [ba84974](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ba84974803c2652f7280e25618e3fedc7dea799a)
+
+**`林英典`**'s contribution
+- `Clean NYC speed data into a time plot showing daily average speed in five boroughs` [see commit(.ipynb)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/662c9d856506a95798a3b53ff418d87b93791879)
+- `Analyze MTA data, which has been marked if it was in CBD` [see commit(.ipynb)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/8b29fd1957b59b190774182a22e83f67aedd79a3)
