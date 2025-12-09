@@ -1,0 +1,599 @@
+---
+title: "Reduce dimensionality of hvfhv data by PCA"
+output:
+  html_document:
+    toc: true
+    number_sections: false
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+# Global options for knitr go here if needed
+## knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# README
+
+- **Author**: `Tung-Yen Wu`
+- **Created At**: `2025-11-26`
+- **Last Modified At**: `2025-12-03`
+
+---
+
+## What does this file do?
+
+- `We　wantto　 use Random Forest to synthesize the control (counterfactual) group in order to estimate the policy’s effect on FHVHV volumes (hourly total trips) and on tips (average tips given per trip). Per-hour origin–destination　(O-D) trip counts are important predictive features for the Random Forest model; however, the dimensionality of these O-D features exceeds 50,000 pairs. Therefore, this script applies PCA to reduce the dimensionality of the per-hour trip-count data before model training.`
+- `This script also assembles and packages all data required for Random Forest training.`
+
+---
+
+## What does this file take?
+
+- **Source Data Sets**:  
+- `/data/processed/hvfhv_cleaned_2024_01_03_combined.rds` 
+    - Description: `<HVFHV data for 2024/01–03 that has been preprocessed, cleaned, and merged using 02-hvfhv-data-processing.rmd.>` 
+- `/data/processed/hvfhv_cleaned_2024_04-12_combined.rds` 
+    - Description: `<HVFHV data for 2024/04–12 that has been preprocessed, cleaned, and merged using 02-hvfhv-data-processing.rmd.>` 
+-　`/data/processed/hvfhv_cleaned_2025-01-10_combined.rds` 
+    - Description: `<HVFHV data for 2025/01–10 that has been preprocessed, cleaned, and merged using 02-hvfhv-data-processing.rmd.>` 
+  
+---
+
+## What does this file output?
+
+- `/data/processed/hourly_y.rds`  
+  - Description: `Contains the per-hour outcomes used as Random Forest targets:(1) y_volume = hourly total trips with drop-off locations in treated areas; (2) y_tips = hourly total tips from trips ending in treated areas.`
+- `/data/processed/time_info.rds`  
+  - Description: `Contains per-hour time information (datetime, date, hour-of-day, day-of-month, month, weekday, row indices) along with the training-period indicator used to construct PCA inputs and RF train/test splits.`  
+- `/data/processed/pc_var_df.rds`  
+  - Description: `Stores PCA variance-explained information for PC1–PC10, including each component’s variance contribution and cumulative variance, based on PCA performed on non-treated hourly O-D trip-count features.`  
+- `/data/processed/pca_model.rds`  
+  - Description: `The fitted PCA model (from prcomp_irlba) trained on the sparse matrix of non-treated O-D hourly trip counts. Used to compute PC scores for all hours as RF input features.`  
+- `/data/processed/rf_hourly_base.rds`  
+  - Description: `The merged hourly dataset for Random Forest training and prediction, containing: time variables, outcomes (y_volume, y_tips), PCA scores (PC1–PC10), non-treated hourly fare/tips/trip-summary features. This is the main modeling dataset consumed by the RF algorithm.`  
+- `/data/processed/treated_loc_list.rds`  
+  - Description: `A cleaned vector of TLC LocationIDs identifying treated (policy-affected) drop-off zones, used to determine treated trips and construct hourly outcomes.`  
+
+
+
+
+# 安裝套件和讀檔
+
+```{r}
+# Load packages here
+required_pkgs <- c(
+  "dplyr", "lubridate", "ggplot2", "tidyr",
+  "irlba", "Matrix", "scales", "readr"
+)
+
+for (pkg in required_pkgs) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
+
+```
+
+
+```{r}
+# Load input here
+## 專案與資料路徑
+base_dir      <- "C:/Users/hp/Desktop/fa-25-econ-5166-group-3"
+processed_dir <- file.path(base_dir, "data", "processed")
+pca_fig_dir   <- file.path(processed_dir, "PCA_fig")
+dir.create(pca_fig_dir, showWarnings = FALSE, recursive = TRUE)
+
+## 三個 cleaned hvfhv 資料
+file_2024_01_03 <- file.path(processed_dir, "hvfhv_cleaned_2024_01_03_combined.rds")
+file_2024_04_12 <- file.path(processed_dir, "hvfhv_cleaned_2024_04_12_combined.rds")
+file_2025_01_10 <- file.path(processed_dir, "hvfhv_cleaned_2025_01_10_combined.rds")
+
+hvfhv_2024_01_03 <- readRDS(file_2024_01_03)
+hvfhv_2024_04_12 <- readRDS(file_2024_04_12)
+hvfhv_2025_01_10 <- readRDS(file_2025_01_10)
+
+## treated DOLocationID 清單
+treated_loc_file <- file.path(processed_dir, "treated_loc_list.rds")
+
+raw_ids <- readRDS(treated_loc_file)   # list of length 1
+
+## 如果是 list，就先拿出第一個元素
+if (is.list(raw_ids)) {
+  raw_ids <- raw_ids[[1]]
+}
+
+## 如果是一整串用空白分隔的字串："12 13 43 45 ..."
+if (length(raw_ids) == 1L && is.character(raw_ids)) {
+  treated_ids <- as.integer(strsplit(raw_ids, "\\s+")[[1]])
+} else {
+  ## 否則假設它已經是向量，直接轉成整數
+  treated_ids <- as.integer(raw_ids)
+}
+
+cat("Number of treated DOLocationID:", length(treated_ids), "\n")
+print(head(treated_ids))
+```
+Dropout　location 是這 39 個　ID　的乘車紀錄，會在2025/01/05後被課收擁塞費，是treated regions。
+
+```{r}
+## 看一下三個資料集的前幾列
+dplyr::glimpse(hvfhv_2024_01_03)
+head(hvfhv_2024_01_03, 5)
+
+dplyr::glimpse(hvfhv_2024_04_12)
+head(hvfhv_2024_04_12, 5)
+
+dplyr::glimpse(hvfhv_2025_01_10)
+head(hvfhv_2025_01_10, 5)
+```
+資料預覽。
+
+#三個資料集建立時間 / treated_loc 變數
+
+```{r}
+prep_trips <- function(df, cohort_label, treated_ids) {
+  df %>%
+    dplyr::mutate(
+      datetime_hour = lubridate::floor_date(pickup_datetime, unit = "hour"),
+      date         = as.Date(pickup_datetime),
+      year         = lubridate::year(pickup_datetime),
+      month        = lubridate::month(pickup_datetime),
+      day_of_month = lubridate::day(pickup_datetime),
+      hour_of_day  = lubridate::hour(pickup_datetime),
+      dow          = lubridate::wday(pickup_datetime, week_start = 1),
+      is_weekday   = dow <= 5,
+      treated_loc  = do_location_id %in% treated_ids,
+      cohort       = cohort_label
+    ) %>%
+    dplyr::filter(is_weekday)
+}
+```
+合併資料、把 treated regions 標上、準備把不是 treated regions 的O-D pairs （定義請看文件開頭敘述）拿去進行PCA降維度
+
+# 建立每小時 panel：treated volume / treated tips / 時間資訊
+
+```{r}
+## 每小時 treated volume 與 treated tips
+## 假設 tips 欄位名稱為 `tips`
+# 2024/04–12：PCA 訓練用 cohort
+trips_2024_04_12 <- prep_trips(hvfhv_2024_04_12, "2024_04_12", treated_ids)
+rm(hvfhv_2024_04_12); gc()
+
+# 每小時 treated volume / tips
+hourly_y_2024_04_12 <- trips_2024_04_12 %>%
+  dplyr::group_by(datetime_hour) %>%
+  dplyr::summarise(
+    y_volume = sum(treated_loc, na.rm = TRUE),
+    y_tips   = sum(ifelse(treated_loc, tips, 0), na.rm = TRUE),
+    .groups  = "drop"
+  )
+
+# 每小時時間資訊（這裡先不給 row_id，全域再統一編）
+time_info_2024_04_12 <- trips_2024_04_12 %>%
+  dplyr::transmute(
+    datetime_hour,
+    date,
+    hour_of_day,
+    day_of_month,
+    month,
+    dow,
+    cohort
+  ) %>%
+  dplyr::distinct(datetime_hour, .keep_all = TRUE) %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(
+    is_train = (date >= as.Date("2024-04-01") &
+                  date <= as.Date("2024-12-31"))
+  )
+
+# non-treated 的 O-D flow（only this cohort 用來定義 feature space）
+other_pair_2024_04_12 <- trips_2024_04_12 %>%
+  dplyr::filter(!treated_loc) %>%
+  dplyr::mutate(
+    feature = paste(pu_location_id, do_location_id, sep = "_")
+  ) %>%
+  dplyr::group_by(datetime_hour, feature) %>%
+  dplyr::summarise(
+    trips_cnt = dplyr::n(),
+    .groups   = "drop"
+  )
+
+# 訓練期小時（其實整個 2024/04–12 都是 train，但仍沿用同一邏輯）
+train_hours_2024_04_12 <- time_info_2024_04_12 %>%
+  dplyr::filter(is_train) %>%
+  dplyr::select(datetime_hour)
+
+# 在訓練期曾出現的 (PU,DO) pairs = PCA 的 feature set
+train_features <- other_pair_2024_04_12 %>%
+  dplyr::inner_join(train_hours_2024_04_12, by = "datetime_hour") %>%
+  dplyr::distinct(feature) %>%
+  dplyr::arrange(feature) %>%
+  dplyr::mutate(col_id = dplyr::row_number())
+
+cat("Number of train features (PU,DO pairs):", nrow(train_features), "\n")
+```
+把 treated regions 的流量和平均小費算出、把不是 treated regions 的O-D pairs （定義請看文件開頭敘述）的乘車次數算出。
+
+# 為 PCA 建立 sparse matrix
+
+```{r}
+# 為這個 cohort 建 row_id（local）
+time_info_2024_04_12 <- time_info_2024_04_12 %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(row_id_local = dplyr::row_number())
+
+# 建 sparse matrix: rows = hours, cols = train_features
+idx_2024_04_12 <- other_pair_2024_04_12 %>%
+  dplyr::inner_join(train_features, by = "feature") %>%
+  dplyr::inner_join(
+    time_info_2024_04_12 %>% dplyr::select(datetime_hour, row_id_local),
+    by = "datetime_hour"
+  )
+
+n_hours_2024_04_12 <- nrow(time_info_2024_04_12)
+p_feats             <- nrow(train_features)
+
+X_2024_04_12_sparse <- Matrix::sparseMatrix(
+  i    = idx_2024_04_12$row_id_local,
+  j    = idx_2024_04_12$col_id,
+  x    = idx_2024_04_12$trips_cnt,
+  dims = c(n_hours_2024_04_12, p_feats)
+)
+
+rm(other_pair_2024_04_12, idx_2024_04_12); gc()
+cat("X_2024_04_12_sparse dim:", paste(dim(X_2024_04_12_sparse), collapse = " x "), "\n")
+```
+
+以上步驟至關重要，把數據整理成「每一行是小時級別、各O-D pairs 的乘車次數」的 matrix；並且，數據已經被存成更記憶體友善的 sparse matrix (否則我的地端電腦有 128 GB，也跑不動)。由輸出的維度可以看到，共分析了 4728 個小時的數據，每個小時有 54482 組 O-D pairs 的乘車數
+
+```{r}
+
+K <- 10
+
+train_rows_local <- which(time_info_2024_04_12$is_train)
+X_train_sparse   <- X_2024_04_12_sparse[train_rows_local, ]
+
+set.seed(123)
+cat("Running fast PCA with irlba on 2024/04–12 training period (K =", K, ")...\n")
+pca_res <- irlba::prcomp_irlba(
+  X_train_sparse,
+  n      = K,
+  center = TRUE,
+  scale. = TRUE
+)
+cat("Fast PCA finished.\n")
+
+# 各 PC 的 variance explained
+var_explained <- pca_res$sdev^2 / sum(pca_res$sdev^2)
+cum_var_K     <- cumsum(var_explained[1:K])
+
+pc_var_df <- data.frame(
+  PC         = 1:K,
+  VarExpl    = var_explained[1:K],
+  CumVarExpl = cum_var_K
+)
+
+p_feats_train        <- ncol(X_train_sparse)
+pc10_total_var       <- sum(pca_res$sdev^2)
+pc10_explained_ratio <- pc10_total_var / p_feats_train
+
+pc_var_df$Original_dimension <- p_feats_train
+pc_var_df$Reduced_dimension  <- K
+
+cat("PC1~PC10 explain",
+    round(pc10_explained_ratio * 100, 3),
+    "% of total variance.\n")
+
+pc_var_df
+```
+在訓練期間 (2024/04~2024/12) 找出PCA算法、和累積解釋的變異。取PC1~PC10，是因為希望之後進 Random forest 的 features 就只有這十個。可以看到，越前面的PC解釋越多變異，非常合理。
+
+# 計算所有時間點的 PCA scores (PC1–PC10)
+
+```{r}
+# PC scores for this cohort
+scores_2024_04_12 <- predict(pca_res, newdata = X_2024_04_12_sparse)
+scores_2024_04_12 <- scores_2024_04_12[, 1:K, drop = FALSE]
+
+pc_df_2024_04_12 <- as.data.frame(scores_2024_04_12)
+colnames(pc_df_2024_04_12) <- paste0("PC", 1:K)
+pc_df_2024_04_12$datetime_hour <- time_info_2024_04_12$datetime_hour
+
+cat("pc_df_2024_04_12 dim:", paste(dim(pc_df_2024_04_12), collapse = " x "), "\n")
+
+# 非 treated 區的 fare / tips 等 summary feature（每小時）
+tips_features_hourly_2024_04_12 <- trips_2024_04_12 %>%
+  dplyr::filter(!treated_loc) %>%
+  dplyr::group_by(datetime_hour) %>%
+  dplyr::summarise(
+    tips_nt_sum              = sum(tips, na.rm = TRUE),
+    tips_nt_mean             = mean(tips, na.rm = TRUE),
+    trip_miles_mean_nt       = mean(trip_miles, na.rm = TRUE),
+    trip_time_mean_nt        = mean(trip_time, na.rm = TRUE),
+    bpf_mean_nt              = mean(base_passenger_fare, na.rm = TRUE),
+    tolls_mean_nt            = mean(tolls, na.rm = TRUE),
+    bcf_mean_nt              = mean(bcf, na.rm = TRUE),
+    sales_tax_mean_nt        = mean(sales_tax, na.rm = TRUE),
+    congestion_surch_mean_nt = mean(congestion_surcharge, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# 組成這個 cohort 的 rf_hourly_base
+rf_hourly_base_2024_04_12 <- time_info_2024_04_12 %>%
+  dplyr::select(-row_id_local) %>%
+  dplyr::left_join(hourly_y_2024_04_12,      by = "datetime_hour") %>%
+  dplyr::left_join(pc_df_2024_04_12,         by = "datetime_hour") %>%
+  dplyr::left_join(tips_features_hourly_2024_04_12, by = "datetime_hour") %>%
+  dplyr::arrange(datetime_hour)
+
+cat("rf_hourly_base_2024_04_12 dim:",
+    paste(dim(rf_hourly_base_2024_04_12), collapse = " x "), "\n")
+
+rm(trips_2024_04_12, X_2024_04_12_sparse); gc()
+
+# 2025/01–10：post-treatment 期間
+trips_2025_01_10 <- prep_trips(hvfhv_2025_01_10, "2025_01_10", treated_ids)
+rm(hvfhv_2025_01_10); gc()
+
+hourly_y_2025_01_10 <- trips_2025_01_10 %>%
+  dplyr::group_by(datetime_hour) %>%
+  dplyr::summarise(
+    y_volume = sum(treated_loc, na.rm = TRUE),
+    y_tips   = sum(ifelse(treated_loc, tips, 0), na.rm = TRUE),
+    .groups  = "drop"
+  )
+
+time_info_2025_01_10 <- trips_2025_01_10 %>%
+  dplyr::transmute(
+    datetime_hour,
+    date,
+    hour_of_day,
+    day_of_month,
+    month,
+    dow,
+    cohort
+  ) %>%
+  dplyr::distinct(datetime_hour, .keep_all = TRUE) %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(is_train = FALSE)
+
+# non-treated O-D flow
+other_pair_2025_01_10 <- trips_2025_01_10 %>%
+  dplyr::filter(!treated_loc) %>%
+  dplyr::mutate(
+    feature = paste(pu_location_id, do_location_id, sep = "_")
+  ) %>%
+  dplyr::group_by(datetime_hour, feature) %>%
+  dplyr::summarise(
+    trips_cnt = dplyr::n(),
+    .groups   = "drop"
+  )
+
+idx_2025_01_10 <- other_pair_2025_01_10 %>%
+  dplyr::inner_join(train_features, by = "feature") %>%
+  dplyr::inner_join(
+    time_info_2025_01_10 %>%
+      dplyr::arrange(datetime_hour) %>%
+      dplyr::mutate(row_id_local = dplyr::row_number()) %>%
+      dplyr::select(datetime_hour, row_id_local),
+    by = "datetime_hour"
+  )
+
+time_info_2025_01_10 <- time_info_2025_01_10 %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(row_id_local = dplyr::row_number())
+
+n_hours_2025_01_10 <- nrow(time_info_2025_01_10)
+p_feats             <- nrow(train_features)
+
+X_2025_01_10_sparse <- Matrix::sparseMatrix(
+  i    = idx_2025_01_10$row_id_local,
+  j    = idx_2025_01_10$col_id,
+  x    = idx_2025_01_10$trips_cnt,
+  dims = c(n_hours_2025_01_10, p_feats)
+)
+
+rm(other_pair_2025_01_10, idx_2025_01_10); gc()
+cat("X_2025_01_10_sparse dim:", paste(dim(X_2025_01_10_sparse), collapse = " x "), "\n")
+
+scores_2025_01_10 <- predict(pca_res, newdata = X_2025_01_10_sparse)
+scores_2025_01_10 <- scores_2025_01_10[, 1:K, drop = FALSE]
+
+pc_df_2025_01_10 <- as.data.frame(scores_2025_01_10)
+colnames(pc_df_2025_01_10) <- paste0("PC", 1:K)
+pc_df_2025_01_10$datetime_hour <- time_info_2025_01_10$datetime_hour
+
+tips_features_hourly_2025_01_10 <- trips_2025_01_10 %>%
+  dplyr::filter(!treated_loc) %>%
+  dplyr::group_by(datetime_hour) %>%
+  dplyr::summarise(
+    tips_nt_sum              = sum(tips, na.rm = TRUE),
+    tips_nt_mean             = mean(tips, na.rm = TRUE),
+    trip_miles_mean_nt       = mean(trip_miles, na.rm = TRUE),
+    trip_time_mean_nt        = mean(trip_time, na.rm = TRUE),
+    bpf_mean_nt              = mean(base_passenger_fare, na.rm = TRUE),
+    tolls_mean_nt            = mean(tolls, na.rm = TRUE),
+    bcf_mean_nt              = mean(bcf, na.rm = TRUE),
+    sales_tax_mean_nt        = mean(sales_tax, na.rm = TRUE),
+    congestion_surch_mean_nt = mean(congestion_surcharge, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+rf_hourly_base_2025_01_10 <- time_info_2025_01_10 %>%
+  dplyr::select(-row_id_local) %>%
+  dplyr::left_join(hourly_y_2025_01_10,      by = "datetime_hour") %>%
+  dplyr::left_join(pc_df_2025_01_10,         by = "datetime_hour") %>%
+  dplyr::left_join(tips_features_hourly_2025_01_10, by = "datetime_hour") %>%
+  dplyr::arrange(datetime_hour)
+
+rm(trips_2025_01_10, X_2025_01_10_sparse); gc()
+
+# 2024/01–03：pre-period cohort
+trips_2024_01_03 <- prep_trips(hvfhv_2024_01_03, "2024_01_03", treated_ids)
+rm(hvfhv_2024_01_03); gc()
+
+# 每小時 treated volume / tips
+hourly_y_2024_01_03 <- trips_2024_01_03 %>%
+  dplyr::group_by(datetime_hour) %>%
+  dplyr::summarise(
+    y_volume = sum(treated_loc, na.rm = TRUE),
+    y_tips   = sum(ifelse(treated_loc, tips, 0), na.rm = TRUE),
+    .groups  = "drop"
+  )
+
+# 每小時時間資訊
+time_info_2024_01_03 <- trips_2024_01_03 %>%
+  dplyr::transmute(
+    datetime_hour,
+    date,
+    hour_of_day,
+    day_of_month,
+    month,
+    dow,
+    cohort
+  ) %>%
+  dplyr::distinct(datetime_hour, .keep_all = TRUE) %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(is_train = FALSE)
+
+# non-treated O-D flow
+other_pair_2024_01_03 <- trips_2024_01_03 %>%
+  dplyr::filter(!treated_loc) %>%
+  dplyr::mutate(
+    feature = paste(pu_location_id, do_location_id, sep = "_")
+  ) %>%
+  dplyr::group_by(datetime_hour, feature) %>%
+  dplyr::summarise(
+    trips_cnt = dplyr::n(),
+    .groups   = "drop"
+  )
+
+# 只保留訓練 feature 中有的 (PU,DO) pairs
+idx_2024_01_03 <- other_pair_2024_01_03 %>%
+  dplyr::inner_join(train_features, by = "feature") %>%
+  dplyr::inner_join(
+    time_info_2024_01_03 %>%
+      dplyr::arrange(datetime_hour) %>%
+      dplyr::mutate(row_id_local = dplyr::row_number()) %>%
+      dplyr::select(datetime_hour, row_id_local),
+    by = "datetime_hour"
+  )
+
+time_info_2024_01_03 <- time_info_2024_01_03 %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(row_id_local = dplyr::row_number())
+
+n_hours_2024_01_03 <- nrow(time_info_2024_01_03)
+p_feats             <- nrow(train_features)
+
+X_2024_01_03_sparse <- Matrix::sparseMatrix(
+  i    = idx_2024_01_03$row_id_local,
+  j    = idx_2024_01_03$col_id,
+  x    = idx_2024_01_03$trips_cnt,
+  dims = c(n_hours_2024_01_03, p_feats)
+)
+
+rm(other_pair_2024_01_03, idx_2024_01_03); gc()
+cat("X_2024_01_03_sparse dim:", paste(dim(X_2024_01_03_sparse), collapse = " x "), "\n")
+
+# 用同一個 PCA 模型算 PC scores
+scores_2024_01_03 <- predict(pca_res, newdata = X_2024_01_03_sparse)
+scores_2024_01_03 <- scores_2024_01_03[, 1:K, drop = FALSE]
+
+pc_df_2024_01_03 <- as.data.frame(scores_2024_01_03)
+colnames(pc_df_2024_01_03) <- paste0("PC", 1:K)
+pc_df_2024_01_03$datetime_hour <- time_info_2024_01_03$datetime_hour
+
+# non-treated fare/tips summary
+tips_features_hourly_2024_01_03 <- trips_2024_01_03 %>%
+  dplyr::filter(!treated_loc) %>%
+  dplyr::group_by(datetime_hour) %>%
+  dplyr::summarise(
+    tips_nt_sum              = sum(tips, na.rm = TRUE),
+    tips_nt_mean             = mean(tips, na.rm = TRUE),
+    trip_miles_mean_nt       = mean(trip_miles, na.rm = TRUE),
+    trip_time_mean_nt        = mean(trip_time, na.rm = TRUE),
+    bpf_mean_nt              = mean(base_passenger_fare, na.rm = TRUE),
+    tolls_mean_nt            = mean(tolls, na.rm = TRUE),
+    bcf_mean_nt              = mean(bcf, na.rm = TRUE),
+    sales_tax_mean_nt        = mean(sales_tax, na.rm = TRUE),
+    congestion_surch_mean_nt = mean(congestion_surcharge, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+rf_hourly_base_2024_01_03 <- time_info_2024_01_03 %>%
+  dplyr::select(-row_id_local) %>%
+  dplyr::left_join(hourly_y_2024_01_03,      by = "datetime_hour") %>%
+  dplyr::left_join(pc_df_2024_01_03,         by = "datetime_hour") %>%
+  dplyr::left_join(tips_features_hourly_2024_01_03, by = "datetime_hour") %>%
+  dplyr::arrange(datetime_hour)
+
+rm(trips_2024_01_03, X_2024_01_03_sparse); gc()
+
+
+```
+為Random forest 的預測期間，也計算上 PC1~PC10。
+分析小費的 Random forest 模型，也要加入每筆資料的各項收費數據和里程數，才可以精準控制乘車的費用資訊（原本被收費很高的乘客，可能就不想給小費；而這些收費很高的乘客，可能正是因為要進去 CBD 才被收比較高的平台費。這個 confounding 一定要控制）。
+
+# 整理 RF base 資料並輸出到 data/processed
+
+```{r}
+# 合併三個 cohort 的 hourly_y / time_info / rf_hourly_base
+hourly_y <- dplyr::bind_rows(
+  hourly_y_2024_01_03,
+  hourly_y_2024_04_12,
+  hourly_y_2025_01_10
+) %>%
+  dplyr::arrange(datetime_hour)
+
+time_info <- dplyr::bind_rows(
+  time_info_2024_01_03 %>% dplyr::select(-row_id_local),
+  time_info_2024_04_12 %>% dplyr::select(-row_id_local),
+  time_info_2025_01_10 %>% dplyr::select(-row_id_local)
+) %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(
+    row_id   = dplyr::row_number(),
+    is_train = (date >= as.Date("2024-04-01") &
+                  date <= as.Date("2024-12-31"))
+  )
+
+rf_hourly_base <- dplyr::bind_rows(
+  rf_hourly_base_2024_01_03,
+  rf_hourly_base_2024_04_12,
+  rf_hourly_base_2025_01_10
+) %>%
+  dplyr::arrange(datetime_hour) %>%
+  dplyr::mutate(
+    y_volume = ifelse(is.na(y_volume), 0L, y_volume),
+    y_tips   = ifelse(is.na(y_tips),   0,  y_tips)
+  ) %>%
+  dplyr::mutate(
+    dplyr::across(
+      .cols = where(is.numeric),
+      .fns  = ~ ifelse(is.na(.x), 0, .x)
+    )
+  )
+
+cat("rf_hourly_base dim:", paste(dim(rf_hourly_base), collapse = " x "), "\n")
+
+# 輸出 RDS：給 RF.Rmd 使用
+saveRDS(hourly_y,
+        file.path(processed_dir, "hourly_y.rds"))
+saveRDS(time_info,
+        file.path(processed_dir, "time_info.rds"))
+saveRDS(pc_var_df,
+        file.path(processed_dir, "pc_var_df.rds"))
+saveRDS(pca_res,
+        file.path(processed_dir, "pca_model.rds"))
+saveRDS(rf_hourly_base,
+        file.path(processed_dir, "rf_hourly_base.rds"))
+
+cat("\n[done] PCA 前處理完成（分 cohort 計算後合併）。以下檔案已寫入：\n")
+print(list.files(processed_dir, pattern = "rds$", full.names = TRUE))
+```
+
+輸出.rds檔案，這些檔案將用於留存PCA模型、和後續 Random forest 訓練要用的資料。
+
+

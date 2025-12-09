@@ -1,0 +1,563 @@
+---
+title: "Predicts volumes and trips for HVFHV data"
+output: html_document
+date: "`r format(Sys.time(), '%Y-%m-%d')`"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Background
+- **Author**: `Tung-Yen Wu`
+- **Created At**: `2025/12/06`
+- **Path to Training Data; Path to Testing Data：(Of note: All files contain a variable called "cohort". If cohort equals to "train_2024_04_12", it is Training Data. If cohort equals to "train_2024_01_03" or "train_2025_01_10", it is testing data.) **
+  - `/data/processed/hourly_y.rds`  
+  - Description: Contains the per-hour outcomes used as Random Forest targets:(1) y_volume = hourly total trips with drop-off locations in treated areas; (2) y_tips = hourly total tips from trips ending in treated areas.
+  - `/data/processed/time_info.rds`  
+  - Description: Contains per-hour time information (datetime, date, hour-of-day, day-of-month, month, weekday, row indices) along with the training-period indicator used to construct PCA inputs and RF train/test splits.  
+  - `/data/processed/pc_var_df.rds`  
+  - Description: Stores PCA variance-explained information for PC1–PC10, including each component’s variance contribution and cumulative variance, based on PCA performed on non-treated hourly O-D trip-count features.  
+  - `/data/processed/pca_model.rds`  
+  - Description: The fitted PCA model (from prcomp_irlba) trained on the sparse matrix of non-treated O-D hourly trip counts. Used to compute PC scores for all hours as RF input features. 
+  - `/data/processed/rf_hourly_base.rds`  
+  - Description: The merged hourly dataset for Random Forest training and prediction, containing: time variables, outcomes (y_volume, y_tips), PCA scores (PC1–PC10), non-treated hourly fare/tips/trip-summary features. This is the main modeling dataset consumed by the RF algorithm.  
+  - `/data/processed/treated_loc_list.rds`  
+  - Description: A cleaned vector of TLC LocationIDs identifying treated (policy-affected) drop-off zones, used to determine treated trips and construct hourly outcomes.  
+
+- **Model Specification：**
+    - Method：Random Forest (RF)
+    - Variables：outcome:a. hourly volume, b. hourly average tips. features: PC1 to PC10 volumes of untreated regions, hour, day, month, total times, total miles, and other pricing infomation of the trip.
+    - Tuning Parameters：Node size(correspond to depth of trees)
+    - Optimization Method：Minimize OOB MSE
+- **Main Findings and Takeaways：**
+    - In-sample `<metric>`: Node size of 5 is best for both of the volume data and tips data.
+    - Out-sample `<metric>`: The variance of explained is nice for  both of the volume data and tips data in the cohort of 2024/01~03.(R2: 0.94~0.96).　The variance of explained for tips in the cohort of 2025/01~2025/10 is relatively low, indicating the policy effect may exist　(R2 ~ 0.92).
+- **Future Direciton： ** Visualize the data, evaluate the effect of the policy.
+
+# 輸入套件、函數和資料
+
+```{r}
+# Load packages here
+required_pkgs <- c(
+  "dplyr", "lubridate", "ggplot2", "tidyr",
+  "randomForest", "scales", "readr"
+)
+
+for (pkg in required_pkgs) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg)
+  }
+  library(pkg, character.only = TRUE)
+}
+
+## R^2 & MSE 小工具
+calc_R2 <- function(y, y_hat) {
+  if (length(y) != length(y_hat) || length(y) == 0L) return(NA_real_)
+  if (length(unique(y)) <= 1L) return(NA_real_)
+  sse <- sum((y - y_hat)^2)
+  sst <- sum((y - mean(y))^2)
+  1 - sse / sst
+}
+
+calc_MSE <- function(y, y_hat) {
+  if (length(y) != length(y_hat) || length(y) == 0L) return(NA_real_)
+  mean((y - y_hat)^2)
+}
+
+## nodesize tuning 小工具：對一組 nodesize 值跑 RF，取 OOB MSE / OOB R^2
+tune_nodesize_rf <- function(X, y, nodesize_grid, ntree = 200, seed = 123) {
+  res_list <- lapply(nodesize_grid, function(ns) {
+    set.seed(seed)
+    fit <- randomForest::randomForest(
+      x        = X,
+      y        = y,
+      ntree    = ntree,
+      nodesize = ns
+    )
+    data.frame(
+      nodesize = ns,
+      OOB_MSE  = tail(fit$mse, 1),
+      OOB_R2   = tail(fit$rsq, 1)
+    )
+  })
+  dplyr::bind_rows(res_list)
+}
+
+## 計算單一棵樹深度的函數（給 getTree() 後用）
+get_tree_depth <- function(tree_df) {
+  left  <- tree_df[, "left daughter"]
+  right <- tree_df[, "right daughter"]
+  nnode <- nrow(tree_df)
+  depth <- integer(nnode)
+  depth[1] <- 1
+  for (i in seq_len(nnode)) {
+    if (left[i]  != 0) depth[left[i]]  <- depth[i] + 1
+    if (right[i] != 0) depth[right[i]] <- depth[i] + 1
+  }
+  max(depth)
+}
+
+
+```
+
+
+```{r}
+# Load the TRAINING data here and please finish all the data manipulation here.
+
+## 專案與資料路徑
+base_dir      <- "C:/Users/hp/Desktop/fa-25-econ-5166-group-3"
+processed_dir <- file.path(base_dir, "data", "processed")
+rf_fig_dir    <- file.path(processed_dir, "RF_fig")
+dir.create(rf_fig_dir, showWarnings = FALSE, recursive = TRUE)
+
+hourly_y      <- readRDS(file.path(processed_dir, "hourly_y.rds"))
+time_info     <- readRDS(file.path(processed_dir, "time_info.rds"))
+pc_var_df     <- readRDS(file.path(processed_dir, "pc_var_df.rds"))
+pca_model     <- readRDS(file.path(processed_dir, "pca_model.rds"))
+rf_hourly_base <- readRDS(file.path(processed_dir, "rf_hourly_base.rds"))
+treated_ids   <- readRDS(file.path(processed_dir, "treated_loc_list.rds"))
+
+rf_data <- rf_hourly_base %>%
+  ## 時間因子變數（整體先建好，確保 train/test 拿到同一組 levels）
+  dplyr::mutate(
+    hour_factor  = factor(hour_of_day),
+    day_factor   = factor(day_of_month),
+    month_factor = factor(month),
+    dow_factor   = factor(dow)
+  ) %>%
+  ## 定義三個 cohort
+  dplyr::mutate(
+    cohort = dplyr::case_when(
+      date >= as.Date("2024-04-01") & date <= as.Date("2024-12-31") ~ "train_2024_04_12",
+      date >= as.Date("2024-01-01") & date <  as.Date("2024-04-01") ~ "test_2024_01_03",
+      date >= as.Date("2025-01-01") & date <  as.Date("2025-04-01") ~ "test_2025_01_03",
+      TRUE ~ "other"
+    )
+  )
+
+## 確保沒有 NA 的目標與數值 features（保險起見再補一次）
+rf_data <- rf_data %>%
+  dplyr::mutate(
+    y_volume = ifelse(is.na(y_volume), 0, y_volume),
+    y_tips   = ifelse(is.na(y_tips),   0, y_tips)
+  ) %>%
+  dplyr::mutate(
+    dplyr::across(
+      .cols = where(is.numeric),
+      .fns  = ~ ifelse(is.na(.x), 0, .x)
+    )
+  )
+
+## PCA 的變數名稱
+pc_vars <- paste0("PC", 1:10)
+
+## Volume RF 的 features：PC1–PC10 + 時間因子
+feature_vars_volume <- c(
+  pc_vars,
+  "hour_factor", "day_factor", "month_factor", "dow_factor"
+)
+
+## Tips RF 的 features：
+## PC1–PC10 + 時間因子 + 非 treated 區域 tips / fare summary
+feature_vars_tips <- c(
+  pc_vars,
+  "hour_factor", "day_factor", "month_factor", "dow_factor",
+  "tips_nt_sum", "tips_nt_mean",
+  "trip_miles_mean_nt", "trip_time_mean_nt",
+  "bpf_mean_nt", "tolls_mean_nt",
+  "bcf_mean_nt", "sales_tax_mean_nt",
+  "congestion_surch_mean_nt"
+)
+
+## 訓練資料（cohort = train_2024_04_12）
+rf_train <- rf_data %>%
+  dplyr::filter(cohort == "train_2024_04_12")
+
+cat("Train rows (2024/04–2024/12):", nrow(rf_train), "\n")
+head(rf_train, 10)
+```
+
+```{r}
+# Load the TESTING data here and please finish all the data manipulation here.
+rf_test <- rf_data %>%
+  dplyr::filter(
+    cohort %in% c("test_2024_01_03", "test_2025_01_03")
+  )
+
+#"test_2024_01_03" 是測試 data
+#"test_2025_01_03" 也算是測試data。但這段期間的hvfhv受到壅塞費影響，這是訓練沒有包含的特徵，所以如果政策有效，#test_2025_01_03這段期間的預測力會比較低。這是整個研究的精神。
+# 所以調參數要用test_2024_01_03 期間調整。
+
+table(rf_test$cohort)
+head(rf_test, 10)
+```
+
+
+# Volume RF – 用 2024/04–2024/12 系統調整 depth（nodesize）
+
+```{r}
+# Include the model specification here.  Please describe the model by stating, including
+# type of method used, the variables included, the hyperparameters, and
+# the method of optimization.
+## nodesize 候選值（可自行調整）
+nodesize_grid_vol <- c(3, 5, 10, 20, 40, 80)
+
+X_train_vol <- rf_train[, feature_vars_volume]
+y_train_vol <- rf_train$y_volume
+
+tune_res_vol <- tune_nodesize_rf(
+  X = X_train_vol,
+  y = y_train_vol,
+  nodesize_grid = nodesize_grid_vol,
+  ntree = 200        ## 調參階段先用較小棵數，加快速度
+)
+
+tune_res_vol
+
+
+```
+
+```{r}
+
+p_tune_vol <- ggplot(tune_res_vol,
+                     aes(x = factor(nodesize), y = OOB_MSE, group = 1)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Volume RF – OOB MSE vs. nodesize (2024/04–2024/12)",
+    x     = "nodesize (minimum samples in terminal nodes)",
+    y     = "OOB MSE"
+  ) +
+  theme_minimal()
+
+print(p_tune_vol)
+
+ggplot2::ggsave(
+  filename = file.path(rf_fig_dir, "volume_OOB_MSE_vs_nodesize.png"),
+  plot     = p_tune_vol,
+  width    = 7,
+  height   = 4,
+  dpi      = 300
+)
+
+best_nodesize_vol <- tune_res_vol$nodesize[which.min(tune_res_vol$OOB_MSE)]
+cat("Best nodesize for Volume RF (by OOB MSE):", best_nodesize_vol, "\n")
+```
+
+```{r}
+set.seed(123)
+rf_fit_volume <- randomForest::randomForest(
+  x          = X_train_vol,
+  y          = y_train_vol,
+  ntree      = 500,
+  nodesize   = best_nodesize_vol,
+  importance = TRUE
+)
+
+## RF 物件：包含 ntree, mtry, OOB MSE / R^2 等
+rf_fit_volume
+
+```
+
+
+```{r}
+## OOB MSE / OOB pseudo-R^2（最終模型）
+OOB_MSE_vol <- tail(rf_fit_volume$mse, 1)
+OOB_R2_vol  <- tail(rf_fit_volume$rsq, 1)
+
+cat("Volume RF – Final model OOB MSE:", OOB_MSE_vol, "\n")
+cat("Volume RF – Final model OOB R^2:", OOB_R2_vol,  "\n")
+
+## 樹深度統計（min / mean / max）
+ntree_vol <- rf_fit_volume$ntree
+cat("Computing tree depths for Volume RF (", ntree_vol, " trees)...\n")
+
+tree_depths_vol <- vapply(
+  1:ntree_vol,
+  function(i) {
+    tree_i <- randomForest::getTree(rf_fit_volume, k = i, labelVar = FALSE)
+    get_tree_depth(tree_i)
+  },
+  numeric(1)
+)
+
+rf_summary_volume <- data.frame(
+  ntree      = ntree_vol,
+  nodesize   = best_nodesize_vol,
+  OOB_MSE    = OOB_MSE_vol,
+  OOB_R2     = OOB_R2_vol,
+  min_depth  = min(tree_depths_vol),
+  mean_depth = mean(tree_depths_vol),
+  max_depth  = max(tree_depths_vol)
+)
+
+rf_summary_volume
+```
+
+
+# Volume RF – 對三個 cohort 預測、比較 R² / MSE 並輸出結果
+
+```{r}
+## 對全部資料做預測
+X_all_vol <- rf_data[, feature_vars_volume]
+rf_data$yhat_volume <- predict(rf_fit_volume, newdata = X_all_vol)
+
+## 三個 cohort 的 R^2 / MSE
+metrics_volume <- rf_data %>%
+  dplyr::filter(
+    cohort %in% c("train_2024_04_12", "test_2024_01_03", "test_2025_01_03")
+  ) %>%
+  dplyr::group_by(cohort) %>%
+  dplyr::summarise(
+    n_obs = dplyr::n(),
+    R2    = calc_R2(y_volume, yhat_volume),
+    MSE   = calc_MSE(y_volume, yhat_volume),
+    .groups = "drop"
+  )
+
+metrics_volume
+```
+
+```{r}
+## 對全部資料做預測
+X_all_vol <- rf_data[, feature_vars_volume]
+rf_data$yhat_volume <- predict(rf_fit_volume, newdata = X_all_vol)
+
+## 三個 cohort 的 R^2 / MSE
+metrics_volume <- rf_data %>%
+  dplyr::filter(
+    cohort %in% c("train_2024_04_12", "test_2024_01_03", "test_2025_01_03")
+  ) %>%
+  dplyr::group_by(cohort) %>%
+  dplyr::summarise(
+    n_obs = dplyr::n(),
+    R2    = calc_R2(y_volume, yhat_volume),
+    MSE   = calc_MSE(y_volume, yhat_volume),
+    .groups = "drop"
+  )
+
+metrics_volume
+```
+
+```{r}
+p_vol_MSE <- ggplot(metrics_volume,
+                    aes(x = cohort, y = R2)) +
+  geom_col() +
+  labs(
+    title = "Volume RF – R2 by Cohort",
+    x     = "Cohort",
+    y     = "R2"
+  ) +
+  theme_minimal()
+
+print(p_vol_MSE)
+
+ggplot2::ggsave(
+  filename = file.path(rf_fig_dir, "volume_r2_by_cohort.png"),
+  plot     = p_vol_MSE,
+  width    = 6,
+  height   = 4,
+  dpi      = 300
+)
+```
+
+```{r}
+## 每小時 volume 的 y / yhat + cohort
+pred_df_volume <- rf_data %>%
+  dplyr::select(
+    datetime_hour, date, hour_of_day,
+    cohort,
+    y_volume, yhat_volume
+  ) %>%
+  dplyr::rename(
+    y    = y_volume,
+    y_hat = yhat_volume
+  )
+
+saveRDS(pred_df_volume,
+        file.path(processed_dir, "pred_df_volume_rf.rds"))
+readr::write_csv(pred_df_volume,
+                 file.path(processed_dir, "pred_df_volume_rf.csv"))
+
+saveRDS(rf_summary_volume,
+        file.path(processed_dir, "rf_summary_volume_depth_tuned.rds"))
+saveRDS(metrics_volume,
+        file.path(processed_dir, "rf_metrics_volume_by_cohort.rds"))
+
+head(pred_df_volume, 5)
+```
+
+
+# Tips RF – 用 2024/04–2024/12 系統調整 depth（nodesize）
+
+```{r}
+nodesize_grid_tips <- c(3, 5, 10, 20, 40, 80)
+
+X_train_tips <- rf_train[, feature_vars_tips]
+y_train_tips <- rf_train$y_tips
+
+tune_res_tips <- tune_nodesize_rf(
+  X = X_train_tips,
+  y = y_train_tips,
+  nodesize_grid = nodesize_grid_tips,
+  ntree = 200
+)
+
+tune_res_tips
+
+```
+
+
+```{r}
+p_tune_tips <- ggplot(tune_res_tips,
+                      aes(x = factor(nodesize), y = OOB_MSE, group = 1)) +
+  geom_line() +
+  geom_point() +
+  labs(
+    title = "Tips RF – OOB MSE vs. nodesize (2024/04–2024/12)",
+    x     = "nodesize (minimum samples in terminal nodes)",
+    y     = "OOB MSE"
+  ) +
+  theme_minimal()
+
+print(p_tune_tips)
+
+ggplot2::ggsave(
+  filename = file.path(rf_fig_dir, "tips_OOB_MSE_vs_nodesize.png"),
+  plot     = p_tune_tips,
+  width    = 7,
+  height   = 4,
+  dpi      = 300
+)
+
+best_nodesize_tips <- tune_res_tips$nodesize[which.min(tune_res_tips$OOB_MSE)]
+cat("Best nodesize for Tips RF (by OOB MSE):", best_nodesize_tips, "\n")
+```
+
+
+```{r}
+set.seed(123)
+rf_fit_tips <- randomForest::randomForest(
+  x          = X_train_tips,
+  y          = y_train_tips,
+  ntree      = 500,
+  nodesize   = best_nodesize_tips,
+  importance = TRUE
+)
+
+rf_fit_tips
+```
+
+```{r}
+OOB_MSE_tips <- tail(rf_fit_tips$mse, 1)
+OOB_R2_tips  <- tail(rf_fit_tips$rsq, 1)
+
+cat("Tips RF – Final model OOB MSE:", OOB_MSE_tips, "\n")
+cat("Tips RF – Final model OOB R^2:", OOB_R2_tips,  "\n")
+
+ntree_tips <- rf_fit_tips$ntree
+cat("Computing tree depths for Tips RF (", ntree_tips, " trees)...\n")
+
+tree_depths_tips <- vapply(
+  1:ntree_tips,
+  function(i) {
+    tree_i <- randomForest::getTree(rf_fit_tips, k = i, labelVar = FALSE)
+    get_tree_depth(tree_i)
+  },
+  numeric(1)
+)
+
+rf_summary_tips <- data.frame(
+  ntree      = ntree_tips,
+  nodesize   = best_nodesize_tips,
+  OOB_MSE    = OOB_MSE_tips,
+  OOB_R2     = OOB_R2_tips,
+  min_depth  = min(tree_depths_tips),
+  mean_depth = mean(tree_depths_tips),
+  max_depth  = max(tree_depths_tips)
+)
+
+rf_summary_tips
+```
+
+# Tips RF – 對三個 cohort 預測、比較 R² / MSE 並輸出結果
+
+```{r}
+X_all_tips <- rf_data[, feature_vars_tips]
+rf_data$yhat_tips <- predict(rf_fit_tips, newdata = X_all_tips)
+
+metrics_tips <- rf_data %>%
+  dplyr::filter(
+    cohort %in% c("train_2024_04_12", "test_2024_01_03", "test_2025_01_03")
+  ) %>%
+  dplyr::group_by(cohort) %>%
+  dplyr::summarise(
+    n_obs = dplyr::n(),
+    R2    = calc_R2(y_tips, yhat_tips),
+    MSE   = calc_MSE(y_tips, yhat_tips),
+    .groups = "drop"
+  )
+
+metrics_tips
+```
+
+```{r}
+p_tips_R2 <- ggplot(metrics_tips,
+                    aes(x = cohort, y = R2)) +
+  geom_col() +
+  labs(
+    title = "Tips RF – R2 by Cohort",
+    x     = "Cohort",
+    y     = "R2"
+  ) +
+  theme_minimal()
+
+print(p_tips_R2)
+
+ggplot2::ggsave(
+  filename = file.path(rf_fig_dir, "tips_R2_by_cohort.png"),
+  plot     = p_tips_R2,
+  width    = 6,
+  height   = 4,
+  dpi      = 300
+)
+```
+
+
+```{r}
+pred_df_tips <- rf_data %>%
+  dplyr::select(
+    datetime_hour, date, hour_of_day,
+    cohort,
+    y_tips, yhat_tips
+  ) %>%
+  dplyr::rename(
+    y    = y_tips,
+    y_hat = yhat_tips
+  )
+
+saveRDS(pred_df_tips,
+        file.path(processed_dir, "pred_df_tips_rf.rds"))
+readr::write_csv(pred_df_tips,
+                 file.path(processed_dir, "pred_df_tips_rf.csv"))
+
+saveRDS(rf_summary_tips,
+        file.path(processed_dir, "rf_summary_tips_depth_tuned.rds"))
+saveRDS(metrics_tips,
+        file.path(processed_dir, "rf_metrics_tips_by_cohort.rds"))
+
+head(pred_df_tips, 5)
+```
+
+
+```{r}
+cat("[done] RF volume & tips (with depth tuning) – all outputs saved in data/processed and RF_fig.\n")
+```
+
+
+
+
+
+
+

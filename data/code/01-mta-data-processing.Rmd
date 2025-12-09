@@ -65,8 +65,6 @@ base_path = "~/Documents/DataScience/fa-25-econ-5166-group-3"
 
 ```{r load_and_bind_data}
 df_24 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__2024_20250928.csv")
-df_24 <- df_24 %>%
-    filter(Month >= 7)
 df_25 <- fread("~/Downloads/MTA_Subway_Origin-Destination_Ridership_Estimate__Beginning_2025.csv")
 # Note: As dataset of 2025 only cover first 6 months, we don't need to filter anymore.
 
@@ -76,24 +74,58 @@ write_parquet(df, "~/Documents/DataScience/data.parquet", compression = "snappy"
 ```
 
 ```{r get_daily_total}
-pq <- open_dataset("~/Documents/DataScience/data.parquet")
-df <- pq %>%
-  group_by(Year, Month, `Day of Week`, `Hour of Day`) %>%
+stations <- read.csv(paste0(base_path, "/data/raw/mta-cbd-stations.csv"))
+stations <- as_arrow_table(stations) %>% 
+    select(Name, in_CBD) %>%
+    mutate(Name = cast(Name, large_utf8()))
+
+ds_new <- open_dataset("~/Documents/DataScience/data.parquet", format = "parquet")
+ds_new <- ds_new %>%
+    left_join(
+        stations %>% 
+            rename(
+                `Origin Station Complex Name` = Name,
+                start_CBD = in_CBD
+            ),
+        by = "Origin Station Complex Name"
+    ) %>%
+    left_join(
+        stations %>% 
+            rename(
+                `Destination Station Complex Name` = Name,
+                end_CBD = in_CBD
+            ),
+        by = "Destination Station Complex Name"
+    ) %>%
+    select(
+        -c(
+            `Origin Station Complex ID`,
+            `Origin Station Complex Name`,
+            `Destination Station Complex ID`,
+            `Destination Station Complex Name`,
+            `Origin Latitude`, `Origin Longitude`,
+            `Destination Latitude`, `Destination Longitude`,
+            `Origin Point`, `Destination Point`
+        )
+    ) %>%
+    collect()
+
+
+df <- ds_new %>%
+  group_by(Year, Month, `Day of Week`, `Hour of Day`, start_CBD, end_CBD) %>%
   summarize(
     hour_sum = sum(`Estimated Average Ridership`)
   ) %>%
-  collect() %>%
   mutate(`Day of Week` = factor(`Day of Week`, levels = 
                                   c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"))) %>%
   arrange(Year, Month, `Day of Week`, `Hour of Day`)
-df
-write.csv(df, paste0(base_path, "/data/processed/mta_hourly.csv"), row.names = FALSE)
+
+write.csv(df, paste0(base_path, "/data/processed/mta-hourly-cbd.csv"), row.names = FALSE)
 
 df <- df %>%
-  group_by(Year, Month, `Day of Week`) %>%
+  group_by(Year, Month, `Day of Week`, start_CBD, end_CBD) %>%
   summarize(
     daily_sum = sum(hour_sum)
   )
-df
-write.csv(df, file.path(base_path, "/data/processed/mta_daily.csv"), row.names = FALSE)
+write.csv(df, file.path(base_path, "/data/processed/mta-daily-cbd.csv"), row.names = FALSE)
 ```
