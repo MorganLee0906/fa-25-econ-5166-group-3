@@ -43,6 +43,7 @@ After the poster presentation, please highlight each member's key contribution t
 - `<Research Proposal>` [23d2878](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/23d2878e3deefbba62a88d5c24f69d0759b574f6)
 - `<HVFHV Data Cleaning & Processing>` [0112b6e](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/0112b6ef6bad11b679015c80cb63d22491cc2cdd) & [27bd43f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/27bd43f36fc7c84dc9584b3c0d0bcaff364404c5) & [17730b4](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66) (co-authored w/ 東彥)
 - `<HVFHV Ride Preliminary Statistical Analysis>` [4fd7ed6](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/4fd7ed65e37b8e219b9edad3b8e8cff3543abc71) & [ff7a53f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ff7a53fe734899b487fe5ab137996e87637c9d30)
+- `<Academic Poster>` 
 
 **`吳東彥`**'s contribution
 - `清理 hvfhv 資料; 將其整理成更有效率的存檔格式以便後續分析。` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66); [see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e)
