@@ -34,9 +34,13 @@ the folder `notebook-templates` contains the jupyter notebooks and R markdown ex
 ## Each Member's Key Contribution
 After the poster presentation, please highlight each member's key contribution to the project. Please include the link to specific commits (e.g., a page like [this](https://github.com/yu-chang-chen/FA25-ECON-5166-Group-Project-Template/commit/29e276672f667af5cd7b198871033748fc3ec3ee)) for my reference.
 
-**`<姚如謙>`**'s contribution
-- `<Contribution >` [see commit](url)
-- `<Contribution >` [see commit](url)
+**`姚如謙`**'s contribution
+- `用政策範圍內外的空氣品質測站與天氣變數測量紐約市的壅車費政策效果` [初始：d788d6f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/8f839db5e058dfb7c7c82e09b4353fbe3891c345)；[最終：5b67234](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/5b67234d056616e8742a039916c7f67b2929c412)
+- `清理並新增各資料集中的DID term`
+    - `地鐵（MTA）資料集` [0e718c9](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/0e718c905f6241cd8d1855505de2e970ad3eec71)
+    - `速度與行車紀錄資料集` [d922c90](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/d922c9086367cbd762b60b9dc2dee0c46e513575)
+- `清理並整理天氣變數與污染變數` [21e3dc0](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/21e3dc0d5d0b4fb7274d9166d4ebdce1189472b5)
+- `用QGIS畫研究範圍地圖（因為不是程式碼，僅上傳圖片）`[fc0d8e0](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/fc0d8e027d0e96f645b785bf3ef2bcbbd494cc07)
 
 **`<周彥辰>`**'s contribution
 - `<Group Meeting Note>` [3e6f0e1](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3e6f0e137904a4d15dcaa074bbfe0e0daf2ed61f)
