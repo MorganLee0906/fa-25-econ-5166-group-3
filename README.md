@@ -38,6 +38,13 @@ After the poster presentation, please highlight each member's key contribution t
 - `<Contribution >` [see commit](url)
 - `<Contribution >` [see commit](url)
 
+**`<周彥辰>`**'s contribution
+- `<Group Meeting Note>` [3e6f0e1](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3e6f0e137904a4d15dcaa074bbfe0e0daf2ed61f)
+- `<Research Proposal>` [23d2878](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/23d2878e3deefbba62a88d5c24f69d0759b574f6)
+- `<HVFHV Data Cleaning & Processing>` [0112b6e](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/0112b6ef6bad11b679015c80cb63d22491cc2cdd) & [27bd43f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/27bd43f36fc7c84dc9584b3c0d0bcaff364404c5)
+- `<HVFHV Ride Preliminary Statistical Analysis>` [4fd7ed6](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/4fd7ed65e37b8e219b9edad3b8e8cff3543abc71) & [ff7a53f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ff7a53fe734899b487fe5ab137996e87637c9d30)
+- `<Academic Poster>` 
+
 **`吳東彥`**'s contribution
 - `清理 hvfhv 資料; 將其整理成更有效率的存檔格式以便後續分析。` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66); [see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e)
 - `對 hvfhv 資料內，依地區別區分的每小時乘車資料做 principal component analysis (PCA); 將數據打包成可以做 Random Forest (RF) 預測模型的格式。` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/d788d6f8cc9981f919a25146fc40473caad9e32f); [see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/6ad2e4c1ab4ce6162e7e14042a4aef9a5c0ac936)
@@ -49,3 +56,7 @@ After the poster presentation, please highlight each member's key contribution t
 - `Clean MTA data` [1a007bc](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/1a007bcba6f43d3e641dee6795d4a7e00faf4fce)
 - `Merge station information into the dataset (to check whether the station in the CBD)` [3343783](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3343783322792a7118567ed80a7383e02b657309)
 - `Analyze MTA data` [3343783](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3343783322792a7118567ed80a7383e02b657309) and [ba84974](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ba84974803c2652f7280e25618e3fedc7dea799a)
+
+**`林英典`**'s contribution
+- `Clean NYC speed data into a time plot showing daily average speed in five boroughs` [see commit(.ipynb)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/662c9d856506a95798a3b53ff418d87b93791879)
+- `Analyze MTA data, which has been marked if it was in CBD` [see commit(.ipynb)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/8b29fd1957b59b190774182a22e83f67aedd79a3)
