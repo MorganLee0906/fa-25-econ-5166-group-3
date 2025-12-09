@@ -65,7 +65,7 @@ After the poster presentation, please highlight each member's key contribution t
 - `Clean NYC speed data into a time plot showing daily average speed in five boroughs` [see commit(.ipynb)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/662c9d856506a95798a3b53ff418d87b93791879)
 - `Analyze MTA data, which has been marked if it was in CBD` [see commit(.ipynb)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/8b29fd1957b59b190774182a22e83f67aedd79a3)
 
-**`<袁承亨>`**'s contribution
-- `Processed and validated DOT traffic speed data, constructing time-series visualizations to evaluate impacts of the congestion pricing within the CBD while controlling for seasonal effects (month), day type (weekday vs. weekend), and intraday variation (hour of day).`  [21452a3] (https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/21452a38dbb394f34e372e8385aa4f0a0507c1a4) and [09ab2cc] (https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/09ab2ccb7b7a8132ba70bfa9be8cb8c5eec22994)
+**`袁承亨`**'s contribution
+- `Processed and validated DOT traffic speed data, constructing time-series visualizations to evaluate impacts of the congestion pricing within the CBD while controlling for seasonal effects (month), day type (weekday vs. weekend), and intraday variation (hour of day).` [21452a3](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/21452a38dbb394f34e372e8385aa4f0a0507c1a4) and [09ab2cc](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/09ab2ccb7b7a8132ba70bfa9be8cb8c5eec22994)
 
-- `Conducted a difference-in-differences (DiD) analysis comparing traffic speeds inside versus outside the Manhattan CBD to estimate the causal effect of the policy.` [4ee24ce] (https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/4ee24ce1f4fcc00aefbb83f5489f9d2b19a41ee0)
+- `Conducted a difference-in-differences (DiD) analysis comparing traffic speeds inside versus outside the Manhattan CBD to estimate the causal effect of the policy.` [4ee24ce](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/4ee24ce1f4fcc00aefbb83f5489f9d2b19a41ee0)
