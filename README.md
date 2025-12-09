@@ -40,6 +40,7 @@ After the poster presentation, please highlight each member's key contribution t
 
 **`<周彥辰>`**'s contribution
 - `<Group Meeting Note>` [3e6f0e1](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3e6f0e137904a4d15dcaa074bbfe0e0daf2ed61f)
+- `<Research Proposal>` [23d2878](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/23d2878e3deefbba62a88d5c24f69d0759b574f6)
 - `<HVFHV Data Cleaning & Processing>` [0112b6e](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/0112b6ef6bad11b679015c80cb63d22491cc2cdd) & [27bd43f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/27bd43f36fc7c84dc9584b3c0d0bcaff364404c5) & [17730b4](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66) (co-authored w/ 東彥)
 - `<HVFHV Ride Preliminary Statistical Analysis>` [4fd7ed6](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/4fd7ed65e37b8e219b9edad3b8e8cff3543abc71) & [ff7a53f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ff7a53fe734899b487fe5ab137996e87637c9d30)
 
