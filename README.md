@@ -38,6 +38,11 @@ After the poster presentation, please highlight each member's key contribution t
 - `<Contribution >` [see commit](url)
 - `<Contribution >` [see commit](url)
 
+**`<周彥辰>`**'s contribution
+- `<Group Meeting Note>` [3e6f0e1](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/3e6f0e137904a4d15dcaa074bbfe0e0daf2ed61f)
+- `<HVFHV Data Cleaning & Processing>` [0112b6e](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/0112b6ef6bad11b679015c80cb63d22491cc2cdd) & [27bd43f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/27bd43f36fc7c84dc9584b3c0d0bcaff364404c5) & [17730b4](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66) (co-authored w/ 東彥)
+- `<HVFHV Ride Preliminary Statistical Analysis>` [4fd7ed6](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/4fd7ed65e37b8e219b9edad3b8e8cff3543abc71) & [ff7a53f](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/ff7a53fe734899b487fe5ab137996e87637c9d30)
+
 **`吳東彥`**'s contribution
 - `清理 hvfhv 資料; 將其整理成更有效率的存檔格式以便後續分析。` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/17730b4472e4f783a41ded5694f032dcbb5bec66); [see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/e3b5bb2704e3ac97835427d168e069f6601a389e)
 - `對 hvfhv 資料內，依地區別區分的每小時乘車資料做 principal component analysis (PCA); 將數據打包成可以做 Random Forest (RF) 預測模型的格式。` [see commit(.rmd)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/d788d6f8cc9981f919a25146fc40473caad9e32f); [see commit(.html)](https://github.com/MorganLee0906/fa-25-econ-5166-group-3/commit/6ad2e4c1ab4ce6162e7e14042a4aef9a5c0ac936)
