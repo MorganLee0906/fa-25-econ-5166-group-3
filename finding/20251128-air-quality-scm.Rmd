@@ -1,5 +1,5 @@
 ---
-title: "Statistical Analysis Template (Converted from Jupyter)"
+title: "Air quality Synthetic Control"
 author: "Auto-converted"
 output: html_document
 date: "`r format(Sys.time(), '%Y-%m-%d')`"
@@ -40,7 +40,7 @@ library(fixest)
 
 ## Reading Data
 climate = read.csv("C:/114-1_Autumn/Data_science_and_social_inquiry/data/air_quality/processed_pm2.5_AQI.csv") %>% 
-  select(c(-X)) %>%
+  dplyr::select(c(-X)) %>%
   mutate(Date = as.Date(Date, format = "%m/%d/%Y"))
 
 ## Produce weekly data
@@ -179,7 +179,9 @@ pm25_out <- scm_data_filtered %>%
 # Plot Trends
 pm25_out %>% plot_trends() + 
   labs(title = "Synthetic Control (Data capped at Mar 23)",
-       subtitle = "East Village vs. Synthetic Control")
+       subtitle = "East Village vs. Synthetic Control",
+       x = "time by week", 
+       y = "average PM2.5 concentration (μg/m³)")
 ```
 
 ```{r}
@@ -335,24 +337,47 @@ $$
 PM2.5_{i,t} = \alpha + \tau_{2} \cdot DID_{it} + \gamma_{1} \cdot Temp_{it} + \gamma_{2} \cdot Wind_{it} + \mu_{i} + \lambda_{t} + \epsilon_{it} 
 $$
 
-
 ```{r}
-# 確保數據集是可用的
-# (假設 did_weighted_data 包含 did_term, temp_final, wind_final, region, week)
+library(fixest)
+library(stargazer)
 
-# Model 1: 基礎固定效應模型
+# Model 1
 base_sdid <- feols(
   PM2.5_avg ~ did_term | region + week,
   data = did_weighted_data
 )
 
-# Model 2: 依據您的要求，將氣候變數作為獨立共變數納入
-
+# Model 2
 sdid_covariates <- feols(
   PM2.5_avg ~ did_term + temp_final + wind_final | region + week,
   data = did_weighted_data
 )
 
+# Stargazer 輸出 LaTeX
+stargazer(
+  base_sdid, sdid_covariates,
+  type = "latex",
+  title = "Difference-in-Differences with Fixed Effects",
+  dep.var.labels = "PM2.5 Average",
+  column.labels = c("Baseline FE Model", "FE + Climate Covariates"),
+  covariate.labels = c(
+    "DID (政策效果)",
+    "Temperature",
+    "Wind Speed"
+  ),
+  add.lines = list(
+    c("Region FE", "Yes", "Yes"),
+    c("Week FE", "Yes", "Yes")
+  ),
+  keep.stat = c("n", "rsq", "aic"),
+  no.space = TRUE,
+  label = "tab:sdid_results"
+)
+
+```
+
+
+```{r}
 # 輸出並排比較結果
 etable(base_sdid, sdid_covariates,
        fitstat = c('n', 'r2', 'aic'),
@@ -360,72 +385,43 @@ etable(base_sdid, sdid_covariates,
        # 輸出時 fixest 會提示哪些變數被移除了
        tex = FALSE
 )
-
 ```
-
 
 did_term 係數為 -0.7222* (P值極小)，表示在控制了地區和時間固定效應以及氣候變數後，擁堵費政策導致 East Village 的 PM2.5 顯著下降了約 0.7222 µg/m³。
 
 temp_final 和 wind_final 係數也顯著，表明氣候衝擊確實與 PM2.5 相關。
 
 ```{r}
-library(ggplot2)
-library(dplyr)
-library(lubridate)
+library(modelsummary)
+# (假設 base_sdid 和 sdid_covariates 模型已在環境中)
 
-# Define the intervention date (from your previous steps)
-intervention_date <- as.Date("2025-01-05")
+# 定義模型列表
+models <- list(
+  "Model 1: Baseline FE" = base_sdid,
+  "Model 2: FE + Climate" = sdid_covariates
+)
 
-# 1. 繪製趨勢圖
-sdid_trends_plot <- did_weighted_data %>%
-  ggplot(aes(x = week, y = PM2.5_avg, color = region)) +
-  geom_line(linewidth = 1) +
-  # 政策介入時間線
-  geom_vline(xintercept = as.numeric(intervention_date), linetype = "dashed", color = "red") +
-  labs(
-    title = "SDID 趨勢圖：政策對 PM2.5 的影響",
-    subtitle = "東村 vs. SCM 加權控制組",
-    y = "PM2.5 平均濃度 (µg/m³)",
-    x = "週",
-    color = "地區"
-  ) +
-  scale_color_manual(values = c("East Village" = "#0072B2", "Weighted_Control" = "#D55E00")) + # 設定顏色
-  theme_minimal() +
-  theme(legend.position = "bottom", plot.title = element_text(hjust = 0.5))
-
-print(sdid_trends_plot)
+# 使用 modelsummary 輸出為 LaTeX
+modelsummary(
+  models,
+  output = "latex", # 輸出格式
+  title = "SDID 模型逐步結果比較",
+  # 調整統計數據和標籤
+  stars = c('*' = .1, '**' = .05, '***' = .01), # 設定星號顯著性
+  gof_map = c("nobs", "r.squared", "aic"), # 選擇要顯示的統計量
+  coef_map = c(
+    "did_term" = "DID (政策效果)",
+    "temp_final" = "溫度",
+    "wind_final" = "風速"
+  ),
+  # 調整固定效應的顯示（fixest 會自動處理）
+  add_rows = data.frame(
+    term = c("地區固定效應 (Region FE)", "時間固定效應 (Week FE)"),
+    # modelsummary 會自動檢測 fixest 的 FE
+    "(1)" = c("Yes", "Yes"),
+    "(2)" = c("Yes", "Yes")
+  ),
+  notes = "Model 2 的氣候變數因共線性被移除。標準誤已進行地區集束 (Region Clustered)。"
+)
 ```
 
-```{r}
-# 1. 計算差距 (Gap = 實際值 - 反事實)
-sdid_gap_data <- did_weighted_data %>%
-  select(week, region, PM2.5_avg) %>%
-  pivot_wider(names_from = region, values_from = PM2.5_avg) %>%
-  mutate(
-    gap = `East Village` - Weighted_Control,
-    # 標記政策前後
-    post_policy = as.numeric(week >= intervention_date)
-  )
-
-# 2. 繪製差距圖
-sdid_gap_plot <- sdid_gap_data %>%
-  ggplot(aes(x = week, y = gap, color = factor(post_policy))) +
-  geom_line(color = "black", linewidth = 0.8) +
-  # 政策介入點
-  geom_vline(xintercept = as.numeric(intervention_date), linetype = "dashed", color = "red") +
-  # 參考線：差距為零
-  geom_hline(yintercept = 0, linetype = "solid", color = "gray50") +
-  # 標記政策後平均差距
-  geom_point(aes(x = week, y = gap), color = "black", size = 1.5) +
-  labs(
-    title = "SDID 政策效果：PM2.5 差距 (Gap)",
-    subtitle = "East Village 實際值 - 加權控制組值",
-    y = "差距 (µg/m³)",
-    x = "週"
-  ) +
-  scale_color_manual(values = c("0" = "#56B4E9", "1" = "#E69F00"), guide = "none") + # 顏色僅用於區分點
-  theme_minimal() +
-  theme(plot.title = element_text(hjust = 0.5))
-
-print(sdid_gap_plot)
-```
